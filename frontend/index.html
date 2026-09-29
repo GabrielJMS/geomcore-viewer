@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>geomcore-viewer</title>
+  </head>
+  <body>
+    <header>
+      <h1>geomcore-viewer</h1>
+      <span id="status">connecting…</span>
+      <div class="spacer"></div>
+      <label><input type="checkbox" id="autofit" checked /> auto-fit</label>
+      <button id="fit">fit</button>
+      <button id="clear">clear</button>
+    </header>
+    <main>
+      <section id="pane3d"><canvas id="canvas3d"></canvas><h2>3D · Babylon.js</h2></section>
+      <section id="pane2d"><div id="view2d"></div><h2>2D · PixiJS</h2></section>
+      <aside id="entities"><h2>entities</h2><ul id="entity-list"></ul>
+        <p class="hint">Live via SSE when served locally · <code>?scene=&lt;url&gt;</code> · or drop a <code>.json</code> scene file anywhere.</p>
+      </aside>
+    </main>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

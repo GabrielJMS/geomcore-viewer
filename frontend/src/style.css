@@ -1,0 +1,17 @@
+:root { color-scheme: dark; }
+* { box-sizing: border-box; }
+body { margin: 0; font: 14px/1.4 system-ui, sans-serif; background: #111; color: #eee; }
+header { display: flex; gap: 0.75rem; align-items: center; padding: 0.5rem 1rem; background: #1b1b1b; }
+header h1 { font-size: 1rem; margin: 0; }
+header .spacer { flex: 1; }
+#status { font-size: 0.8rem; color: #9c9; }
+main { display: grid; grid-template-columns: 1fr 1fr 220px; gap: 1px; height: calc(100vh - 49px); background: #333; }
+section { position: relative; background: #000; min-width: 0; }
+section h2 { position: absolute; left: 0.5rem; bottom: 0.25rem; margin: 0; font-size: 0.75rem; font-weight: normal; color: #888; }
+#canvas3d, #view2d { position: absolute; inset: 0; width: 100%; height: 100%; }
+#view2d canvas { display: block; }
+aside { background: #1b1b1b; padding: 0.5rem 1rem; overflow: auto; }
+aside ul { list-style: none; padding: 0; margin: 0; }
+aside li { display: flex; gap: 0.5rem; align-items: center; padding: 0.15rem 0; }
+.swatch { width: 0.8em; height: 0.8em; border-radius: 2px; display: inline-block; }
+.hint { color: #888; font-size: 0.75rem; }
