@@ -20,7 +20,7 @@ export class View3D {
   constructor(private store: Store, canvas: HTMLCanvasElement) {
     const engine = new BABYLON.Engine(canvas, true);
     this.scene = new BABYLON.Scene(engine);
-    this.scene.clearColor = new BABYLON.Color4(0.07, 0.07, 0.09, 1);
+    this.scene.clearColor = new BABYLON.Color4(0.96, 0.96, 0.97, 1);
     this.camera = new BABYLON.ArcRotateCamera("cam", -Math.PI / 2, Math.PI / 3, 10, BABYLON.Vector3.Zero(), this.scene);
     this.camera.attachControl(canvas, true);
     new BABYLON.HemisphericLight("light", new BABYLON.Vector3(0.3, 1, 0.5), this.scene);
@@ -105,7 +105,7 @@ export class View3D {
       const built = pcs.buildMeshAsync();
       void built.then((mesh) => {
         const mat = new BABYLON.StandardMaterial(`m-${e.id}`, this.scene);
-        mat.diffuseColor = cssToColor3(e.color, new BABYLON.Color3(1, 1, 1));
+        mat.diffuseColor = cssToColor3(e.color, new BABYLON.Color3(0.2, 0.2, 0.2));
         mat.emissiveColor = mat.diffuseColor;
         mesh.material = mat;
         this.replace(e.id, mesh);

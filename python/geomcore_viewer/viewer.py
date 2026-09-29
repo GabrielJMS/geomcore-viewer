@@ -46,13 +46,13 @@ class Viewer:
              "color": color, "name": name or id}
         )
 
-    def add_points3d(self, id: str, positions, color: str = "#ffffff", size: int = 2, name: str = "") -> dict:
+    def add_points3d(self, id: str, positions, color: str = "#333333", size: int = 2, name: str = "") -> dict:
         return self._upsert(
             {"id": id, "kind": "points3d", "positions": list(positions),
              "color": color, "size": size, "name": name or id}
         )
 
-    def add_points2d(self, id: str, positions, color: str = "#66ccff", size: int = 3, name: str = "") -> dict:
+    def add_points2d(self, id: str, positions, color: str = "#1a8cd8", size: int = 3, name: str = "") -> dict:
         return self._upsert(
             {"id": id, "kind": "points2d", "positions": list(positions),
              "color": color, "size": size, "name": name or id}

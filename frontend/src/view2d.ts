@@ -25,7 +25,7 @@ export class View2D {
     this.app = new PIXI.Application();
     (window as unknown as { __v2d?: View2D[] }).__v2d ??= [];
     (window as unknown as { __v2d: View2D[] }).__v2d.push(this);
-    void this.app.init({ resizeTo: host, background: "#0b0e14", antialias: true }).then(() => {
+    void this.app.init({ resizeTo: host, background: "#f4f6fa", antialias: true }).then(() => {
       host.appendChild(this.app.canvas);
       this.app.stage.addChild(this.world);
       this.enableNav();
@@ -143,7 +143,7 @@ export class View2D {
     } else if (e.kind === "points2d" && e.positions && e.positions.length > 0) {
       // One GPU-batched particle draw call regardless of point count.
       const container = new PIXI.ParticleContainer({ texture: PIXI.Texture.WHITE });
-      const tint = cssToHex(e.color, 0x66ccff);
+      const tint = cssToHex(e.color, 0x1a8cd8);
       const size = Math.max(e.size ?? 3, 1) / Math.max(this.world.scale.x, 1e-9);
       for (const p of e.positions) {
         container.addParticle(
