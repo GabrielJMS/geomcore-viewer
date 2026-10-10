@@ -131,7 +131,7 @@ export function parseObject(raw: unknown): { object: SceneObject } | { problem: 
   if (g.type === "parabola" && geom.f === 0) return fail("parabola.f must be non-zero");
   if (g.type === "line" && Math.hypot(...(geom.d as Vec3)) === 0) return fail("line.d must be non-zero");
   if (g.type === "polyline" && (geom.points as Vec3[]).length < 2) return fail("polyline.points needs at least 2 points");
-  if (g.type === "points" && (geom.positions as Vec3[]).length === 0) return fail("points.points must not be empty");
+  if (g.type === "points" && (geom.positions as Vec3[]).length === 0) return fail("points.positions must not be empty");
   if (g.type === "mesh") {
     if ((geom.indices as number[]).length === 0) return fail("mesh.indices must be a non-empty multiple of 3");
     const n = (geom.vertices as Vec3[]).length;
