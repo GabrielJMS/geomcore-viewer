@@ -5,3 +5,5 @@ __pycache__/
 target/
 .venv/
 .DS_Store
+build/
+python/geomcore_viewer/_frontend/
