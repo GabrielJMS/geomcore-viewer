@@ -160,3 +160,23 @@ def test_cli_serve_port_default(monkeypatch, env, argv, expected):
         monkeypatch.setenv("GEOMCORE_VIEWER_URL", env)
     main(["serve", "--no-browser", *argv])
     assert _FakeServer.ports == [expected]
+
+
+def test_spawned_server_runs_from_the_home_directory(monkeypatch):
+    import os
+
+    calls = []
+
+    class FakePopen:
+        def __init__(self, cmd, **kwargs):
+            calls.append((cmd, kwargs))
+
+        def poll(self):
+            return 0
+
+    monkeypatch.setattr(spawn.subprocess, "Popen", FakePopen)
+    monkeypatch.setattr(spawn, "_children", {})
+    spawn._spawn(12345)
+    [(cmd, kwargs)] = calls
+    assert kwargs["cwd"] == os.path.expanduser("~")  # not the script's directory, which would stay busy
+    assert cmd[-3:] == ["--port", "12345", "--no-browser"]

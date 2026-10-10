@@ -52,7 +52,9 @@ def _spawn(port: int) -> subprocess.Popen:
         detach = {"creationflags": subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP}
     proc = subprocess.Popen(
         [sys.executable, "-m", "geomcore_viewer", "serve", "--port", str(port), "--no-browser"],
-        stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, env=env, **detach,
+        stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, env=env,
+        cwd=os.path.expanduser("~"),  # do not keep the script's directory busy (unmounting, deleting)
+        **detach,
     )
     stale = _children.get(port)
     if stale is not None:
