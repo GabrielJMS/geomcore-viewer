@@ -1,7 +1,7 @@
 import { defineConfig } from "vite";
 
 export default defineConfig({
-  // Repository name, so asset URLs work under GitHub Pages.
-  base: "/geomcore-viewer/",
+  // Relative asset URLs: the same build works on GitHub Pages and from the local server.
+  base: "./",
   build: { outDir: "dist", emptyOutDir: true },
 });

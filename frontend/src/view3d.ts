@@ -1,38 +1,59 @@
 import * as BABYLON from "@babylonjs/core";
-import { Entity } from "./protocol";
-import { Store } from "./store";
+import { halfSize, sameBox, sceneBounds, viewBox } from "./geom/bounds";
+import { arrowPolylines, tessellateCurve, tessellateSurface } from "./geom/tessellate";
+import { isCurve, isSurface } from "./geom/types";
+import type { Box, Vec3 } from "./geom/vec";
+import type { SceneObject } from "./protocol";
+import type { Store, StoreEvent } from "./store";
+import { colorOf } from "./ui/colors";
 
-function cssToColor3(css: string | undefined, fallback: BABYLON.Color3): BABYLON.Color3 {
-  if (!css) return fallback;
+const v3 = (p: Vec3) => new BABYLON.Vector3(p[0], p[1], p[2]);
+
+function color3(css: string): BABYLON.Color3 {
   try {
     return BABYLON.Color3.FromHexString(css.startsWith("#") ? css : `#${css}`);
   } catch {
-    return fallback;
+    return BABYLON.Color3.FromHexString("#30638e");
   }
 }
 
-/** Babylon.js 3D pane: curves as line systems, surfaces as meshes, clouds as points. */
+/** Babylon 3D pane, z up and right-handed like geomcore. Phase 1: thin lines, plain markers. */
 export class View3D {
-  scene: BABYLON.Scene;
-  camera: BABYLON.ArcRotateCamera;
-  meshes = new Map<string, BABYLON.AbstractMesh>();
+  readonly scene: BABYLON.Scene;
+  readonly camera: BABYLON.ArcRotateCamera;
+  private meshes = new Map<string, BABYLON.AbstractMesh[]>();
+  private box: Box = viewBox([]);
 
   constructor(private store: Store, canvas: HTMLCanvasElement) {
     const engine = new BABYLON.Engine(canvas, true);
     this.scene = new BABYLON.Scene(engine);
+    this.scene.useRightHandedSystem = true;
     this.scene.clearColor = new BABYLON.Color4(0.96, 0.96, 0.97, 1);
     this.camera = new BABYLON.ArcRotateCamera("cam", -Math.PI / 2, Math.PI / 3, 10, BABYLON.Vector3.Zero(), this.scene);
+    this.camera.upVector = new BABYLON.Vector3(0, 0, 1);
     this.camera.attachControl(canvas, true);
-    new BABYLON.HemisphericLight("light", new BABYLON.Vector3(0.3, 1, 0.5), this.scene);
-
-    store.onChange((kind, entity) => {
-      if (kind === "clear" || kind === "reset") this.removeAll();
-      if (kind === "reset") for (const e of store.entities.values()) this.show(e);
-      if (kind === "upsert" && entity) this.show(entity);
-      if (this.autoFit()) this.fit();
-    });
+    new BABYLON.HemisphericLight("light", new BABYLON.Vector3(0.3, 0.5, 1), this.scene);
+    store.onChange((ev) => this.onStore(ev));
     window.addEventListener("resize", () => engine.resize());
     engine.runRenderLoop(() => this.scene.render());
+    this.rebuild();
+    this.fit();
+  }
+
+  private geoms() {
+    return [...this.store.objects.values()].map((o) => o.geom);
+  }
+
+  private onStore(ev: StoreEvent): void {
+    if (ev.type === "meta") return;
+    const box = viewBox(this.geoms());
+    const boxChanged = !sameBox(box, this.box);
+    this.box = box;
+    // Infinite curves and default surface windows depend on the box: rebuild when it moves.
+    if (ev.type === "reset" || boxChanged) this.rebuild();
+    else if (ev.type === "upsert") ev.objects.forEach((o) => this.show(o));
+    else this.drop(ev.id);
+    if (this.autoFit()) this.fit();
   }
 
   private autoFit(): boolean {
@@ -40,80 +61,77 @@ export class View3D {
   }
 
   fit(): void {
-    const min = new BABYLON.Vector3(Number.POSITIVE_INFINITY, Number.POSITIVE_INFINITY, Number.POSITIVE_INFINITY);
-    const max = new BABYLON.Vector3(Number.NEGATIVE_INFINITY, Number.NEGATIVE_INFINITY, Number.NEGATIVE_INFINITY);
-    let found = false;
-    for (const e of this.store.entities.values()) {
-      const pts = e.points ?? e.vertices ?? e.positions ?? [];
-      for (const p of pts) {
-        if (p.length < 3) continue;
-        found = true;
-        min.minimizeInPlace(new BABYLON.Vector3(p[0], p[1], p[2]));
-        max.maximizeInPlace(new BABYLON.Vector3(p[0], p[1], p[2]));
-      }
-    }
-    if (!found) return;
-    const center = min.add(max).scale(0.5);
-    const radius = Math.max(max.subtract(min).length() / 2, 1e-6);
+    const b = sceneBounds(this.geoms());
+    if (!b) return;
+    const center = v3(b.min).add(v3(b.max)).scale(0.5);
     this.camera.target.copyFrom(center);
-    this.camera.radius = radius * 3;
+    this.camera.radius = Math.max(v3(b.max).subtract(v3(b.min)).length() / 2, 1e-6) * 3;
   }
 
-  fitRequested(): void {
-    this.fit();
+  private rebuild(): void {
+    this.box = viewBox(this.geoms());
+    for (const id of [...this.meshes.keys()]) this.drop(id);
+    for (const o of this.store.objects.values()) this.show(o);
   }
 
-  private removeAll(): void {
-    for (const m of this.meshes.values()) m.dispose();
-    this.meshes.clear();
+  private drop(id: string): void {
+    this.meshes.get(id)?.forEach((m) => m.dispose(false, true));
+    this.meshes.delete(id);
   }
 
-  private replace(id: string, mesh: BABYLON.AbstractMesh): void {
-    this.meshes.get(id)?.dispose();
-    this.meshes.set(id, mesh);
+  private show(o: SceneObject): void {
+    this.drop(o.id);
+    const made = this.build(o);
+    if (made.length) this.meshes.set(o.id, made);
   }
 
-  show(e: Entity): void {
-    if (e.kind === "curve3d" && e.points && e.points.length >= 2) {
-      const line = BABYLON.MeshBuilder.CreateLineSystem(
-        `e-${e.id}`,
-        { lines: [e.points.map((p) => new BABYLON.Vector3(p[0], p[1], p[2]))] },
-        this.scene,
-      );
-      line.color = cssToColor3(e.color, new BABYLON.Color3(1, 0.4, 0.2));
-      this.replace(e.id, line);
-    } else if (e.kind === "surface" && e.vertices && e.indices) {
-      const data = new BABYLON.VertexData();
-      data.positions = e.vertices.flat();
-      data.indices = e.indices;
-      data.normals = [];
-      BABYLON.VertexData.ComputeNormals(data.positions, data.indices, data.normals);
-      const mesh = new BABYLON.Mesh(`e-${e.id}`, this.scene);
-      data.applyToMesh(mesh);
-      const mat = new BABYLON.StandardMaterial(`m-${e.id}`, this.scene);
-      mat.diffuseColor = cssToColor3(e.color, new BABYLON.Color3(0.3, 0.6, 1));
-      mat.specularColor = new BABYLON.Color3(0.2, 0.2, 0.2);
-      mat.backFaceCulling = false;
-      if (e.opacity !== undefined && e.opacity < 1) {
-        mat.alpha = Math.min(Math.max(e.opacity, 0), 1);
-      }
-      mesh.material = mat;
-      this.replace(e.id, mesh);
-    } else if (e.kind === "points3d" && e.positions && e.positions.length > 0) {
-      const pcs = new BABYLON.PointsCloudSystem(`e-${e.id}`, e.size ?? 2, this.scene);
-      pcs.addPoints(e.positions.length, (p: { position: BABYLON.Vector3; idx: number }) => {
-        const q = e.positions![p.idx] as number[];
-        p.position = new BABYLON.Vector3(q[0], q[1], q[2]);
-      });
-      const built = pcs.buildMeshAsync();
-      void built.then((mesh) => {
-        const mat = new BABYLON.StandardMaterial(`m-${e.id}`, this.scene);
-        mat.diffuseColor = cssToColor3(e.color, new BABYLON.Color3(0.2, 0.2, 0.2));
-        mat.emissiveColor = mat.diffuseColor;
-        mesh.material = mat;
-        this.replace(e.id, mesh);
-      });
+  private build(o: SceneObject): BABYLON.AbstractMesh[] {
+    const g = o.geom;
+    const color = color3(colorOf(o));
+    if (isCurve(g)) return [this.lines(o.id, [tessellateCurve(g, this.box)], color)];
+    if (g.type === "polyline") return [this.lines(o.id, [g.points], color)];
+    if (g.type === "arrow") return [this.lines(o.id, arrowPolylines(g.at, g.vec), color)];
+    if (isSurface(g)) {
+      const mesh = tessellateSurface(g, halfSize(this.box));
+      return [this.surface(o, mesh.positions, mesh.indices, color)];
     }
-    // curve2d / points2d belong to the 2D pane — ignored here.
+    if (g.type === "mesh") return [this.surface(o, g.vertices.flat(), g.indices, color)];
+    if (g.type === "point") return [this.marker(o.id, g.p, color)];
+    if (g.type === "points") return g.positions.map((p, i) => this.marker(`${o.id}#${i}`, p, color, 0.5));
+    return []; // text and notes: panel only in Phase 1
+  }
+
+  private lines(id: string, polylines: Vec3[][], color: BABYLON.Color3): BABYLON.LinesMesh {
+    const mesh = BABYLON.MeshBuilder.CreateLineSystem(`o-${id}`, { lines: polylines.map((l) => l.map(v3)) }, this.scene);
+    mesh.color = color;
+    return mesh;
+  }
+
+  private surface(o: SceneObject, positions: number[], indices: number[], color: BABYLON.Color3): BABYLON.Mesh {
+    const data = new BABYLON.VertexData();
+    data.positions = positions;
+    data.indices = indices;
+    data.normals = [];
+    BABYLON.VertexData.ComputeNormals(positions, indices, data.normals);
+    const mesh = new BABYLON.Mesh(`o-${o.id}`, this.scene);
+    data.applyToMesh(mesh);
+    const mat = new BABYLON.StandardMaterial(`m-${o.id}`, this.scene);
+    mat.diffuseColor = color;
+    mat.specularColor = new BABYLON.Color3(0.2, 0.2, 0.2);
+    mat.backFaceCulling = false;
+    mat.alpha = Math.min(Math.max(o.style?.opacity ?? 1, 0), 1);
+    mesh.material = mat;
+    return mesh;
+  }
+
+  private marker(id: string, p: Vec3, color: BABYLON.Color3, scale = 1): BABYLON.Mesh {
+    const diameter = 0.02 * halfSize(this.box) * scale;
+    const sphere = BABYLON.MeshBuilder.CreateSphere(`o-${id}`, { diameter, segments: 8 }, this.scene);
+    sphere.position = v3(p);
+    const mat = new BABYLON.StandardMaterial(`m-${id}`, this.scene);
+    mat.diffuseColor = color;
+    mat.emissiveColor = color.scale(0.6);
+    sphere.material = mat;
+    return sphere;
   }
 }

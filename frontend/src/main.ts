@@ -1,38 +1,41 @@
 import "./style.css";
 import { Store } from "./store";
-import { View3D } from "./view3d";
+import { mountPanel } from "./ui/panel";
 import { View2D } from "./view2d";
-import { Entity, isEntity } from "./protocol";
+import { View3D } from "./view3d";
+
+function byId<T extends HTMLElement = HTMLElement>(id: string): T {
+  const el = document.getElementById(id);
+  if (!el) throw new Error(`#${id} is missing from index.html`);
+  return el as T;
+}
 
 const store = new Store();
-const canvas3d = document.getElementById("canvas3d") as HTMLCanvasElement;
-const host2d = document.getElementById("view2d") as HTMLElement;
-const view3d = new View3D(store, canvas3d);
-void new View2D(store, host2d);
+const view3d = new View3D(store, byId<HTMLCanvasElement>("canvas3d"));
+const view2d = new View2D(store, byId("view2d"));
+mountPanel(store, byId("entity-list"), byId("title"), byId("status"));
 
-document.getElementById("fit")?.addEventListener("click", () => {
-  view3d.fitRequested();
-  for (const v of (window as unknown as { __v2d?: { fitRequested(): void }[] }).__v2d ?? []) v.fitRequested();
+byId("fit").addEventListener("click", () => {
+  view3d.fit();
+  view2d.fitRequested();
 });
-document.getElementById("clear")?.addEventListener("click", () => store.clear());
+byId("clear").addEventListener("click", () => store.clearAll());
 
-void store.load();
-
-// Drag-and-drop a scene.json file anywhere on the page.
+// Drag-and-drop a scene .json file anywhere on the page.
 window.addEventListener("dragover", (e) => e.preventDefault());
 window.addEventListener("drop", (e) => {
   e.preventDefault();
   const file = e.dataTransfer?.files?.[0];
   if (!file) return;
   void file.text().then((text) => {
+    let raw: unknown;
     try {
-      const doc = JSON.parse(text) as { entities?: unknown[] };
-      const entities = (doc.entities ?? []).filter(isEntity) as Entity[];
-      store.reset({ version: 1, entities });
-      store.setStatus(`static: ${file.name}`);
+      raw = JSON.parse(text);
     } catch {
       store.setStatus(`could not parse ${file.name}`);
+      return;
     }
+    if (store.loadJson(raw, file.name)) store.setStatus(`static: ${file.name}`);
   });
 });
 

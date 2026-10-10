@@ -1,43 +1,50 @@
 import * as PIXI from "pixi.js";
-import { Entity } from "./protocol";
-import { Store } from "./store";
+import { sameBox, sceneBounds, viewBox } from "./geom/bounds";
+import { inPlaneZ0 } from "./geom/planar";
+import { arrowPolylines, tessellateCurve } from "./geom/tessellate";
+import { Geom, isCurve } from "./geom/types";
+import type { Box, Vec3 } from "./geom/vec";
+import type { SceneObject } from "./protocol";
+import type { Store, StoreEvent } from "./store";
+import { colorOf } from "./ui/colors";
 
-function cssToHex(css: string | undefined, fallback: number): number {
-  if (!css) return fallback;
+const hex = (css: string): number => {
   const m = css.replace("#", "");
   const v = parseInt(m.length === 3 ? m.split("").map((c) => c + c).join("") : m, 16);
-  return Number.isNaN(v) ? fallback : v;
-}
+  return Number.isNaN(v) ? 0x30638e : v;
+};
 
-/**
- * PixiJS 2D pane (WebGL): parameter-space curves as stroked polylines,
- * point clouds as GPU particle batches — sized for millions of points,
- * unlike Canvas2D blitting.
- */
+/** PixiJS pane for everything lying in z = 0, y up. Phase 2 replaces it with the full plane view. */
 export class View2D {
-  app: PIXI.Application;
-  world = new PIXI.Container();
-  nodes = new Map<string, PIXI.Container>();
-  bounds = new PIXI.Rectangle(0, 0, 1, 1);
+  private app = new PIXI.Application();
+  private world = new PIXI.Container();
+  private nodes = new Map<string, PIXI.Container>();
+  private box: Box = viewBox([]);
   private userMoved = false;
 
   constructor(private store: Store, private host: HTMLElement) {
-    this.app = new PIXI.Application();
-    (window as unknown as { __v2d?: View2D[] }).__v2d ??= [];
-    (window as unknown as { __v2d: View2D[] }).__v2d.push(this);
     void this.app.init({ resizeTo: host, background: "#f4f6fa", antialias: true }).then(() => {
       host.appendChild(this.app.canvas);
       this.app.stage.addChild(this.world);
       this.enableNav();
-      store.onChange((kind, entity) => {
-        if (kind === "clear" || kind === "reset") this.removeAll();
-        if (kind === "reset") for (const e of store.entities.values()) this.show(e);
-        if (kind === "upsert" && entity) this.show(entity);
-        if (this.autoFit() && !this.userMoved) this.fit();
-      });
-      for (const e of this.store.entities.values()) this.show(e);
+      store.onChange((ev) => this.onStore(ev));
       this.fit();
     });
+  }
+
+  private planarGeoms(): Geom[] {
+    return [...this.store.objects.values()].map((o) => o.geom).filter(inPlaneZ0);
+  }
+
+  private onStore(ev: StoreEvent): void {
+    if (ev.type === "meta") return;
+    const box = viewBox(this.planarGeoms());
+    const boxChanged = !sameBox(box, this.box);
+    this.box = box;
+    if (ev.type === "reset" || boxChanged) this.rebuild();
+    else if (ev.type === "upsert") ev.objects.forEach((o) => this.show(o));
+    else this.drop(ev.id);
+    if (this.autoFit() && !this.userMoved) this.fit();
   }
 
   private autoFit(): boolean {
@@ -47,6 +54,22 @@ export class View2D {
   fitRequested(): void {
     this.userMoved = false;
     this.fit();
+  }
+
+  private fit(): void {
+    const b = sceneBounds(this.planarGeoms());
+    if (b) {
+      const w = Math.max(b.max[0] - b.min[0], 1e-9);
+      const h = Math.max(b.max[1] - b.min[1], 1e-9);
+      const pad = 40;
+      const width = this.host.clientWidth || 800;
+      const height = this.host.clientHeight || 600;
+      const s = Math.min((width - pad) / w, (height - pad) / h);
+      this.world.scale.set(s, -s); // y up
+      this.world.x = (width - w * s) / 2 - b.min[0] * s;
+      this.world.y = (height + h * s) / 2 + b.min[1] * s;
+    }
+    this.rebuild(); // stroke widths are set in world units for the current zoom
   }
 
   private enableNav(): void {
@@ -74,87 +97,55 @@ export class View2D {
         const rect = canvas.getBoundingClientRect();
         const mx = ev.clientX - rect.left;
         const my = ev.clientY - rect.top;
-        const wx = (mx - this.world.x) / this.world.scale.x;
-        const wy = (my - this.world.y) / this.world.scale.x;
-        const s = Math.min(Math.max(this.world.scale.x * factor, 1e-6), 1e9);
-        this.world.scale.set(s);
+        const sx = this.world.scale.x;
+        const wx = (mx - this.world.x) / sx;
+        const wy = (my - this.world.y) / -sx;
+        const s = Math.min(Math.max(sx * factor, 1e-6), 1e9);
+        this.world.scale.set(s, -s);
         this.world.x = mx - wx * s;
-        this.world.y = my - wy * s;
+        this.world.y = my + wy * s;
       },
       { passive: false },
     );
   }
 
-  private removeAll(): void {
-    for (const n of this.nodes.values()) {
-      this.world.removeChild(n);
-      n.destroy({ children: true });
-    }
-    this.nodes.clear();
-    this.bounds = new PIXI.Rectangle(0, 0, 1, 1);
+  private rebuild(): void {
+    this.box = viewBox(this.planarGeoms());
+    for (const id of [...this.nodes.keys()]) this.drop(id);
+    for (const o of this.store.objects.values()) this.show(o);
   }
 
-  private growBounds(x: number, y: number): void {
-    if (this.bounds.width === 1 && this.bounds.height === 1 && this.bounds.x === 0 && this.bounds.y === 0) {
-      this.bounds = new PIXI.Rectangle(x, y, 0, 0);
-      return;
-    }
-    const b = this.bounds;
-    const x0 = Math.min(b.x, x);
-    const y0 = Math.min(b.y, y);
-    const x1 = Math.max(b.x + b.width, x);
-    const y1 = Math.max(b.y + b.height, y);
-    this.bounds = new PIXI.Rectangle(x0, y0, Math.max(x1 - x0, 1e-9), Math.max(y1 - y0, 1e-9));
+  private drop(id: string): void {
+    const node = this.nodes.get(id);
+    if (!node) return;
+    this.world.removeChild(node);
+    node.destroy({ children: true });
+    this.nodes.delete(id);
   }
 
-  fit(): void {
-    const b = this.bounds;
-    if (b.width <= 0 || b.height <= 0) return;
-    const w = this.host.clientWidth || 800;
-    const h = this.host.clientHeight || 600;
-    const pad = 40;
-    const s = Math.min((w - pad) / b.width, (h - pad) / b.height);
-    this.world.scale.set(s);
-    // Y-upFlip: parameter space v grows upward.
-    this.world.x = pad / 2 - b.x * s;
-    this.world.y = h - pad / 2 + b.y * s + b.height * s;
-    this.world.scale.y = -s;
-  }
-
-  show(e: Entity): void {
-    const old = this.nodes.get(e.id);
-    if (old) {
-      this.world.removeChild(old);
-      old.destroy({ children: true });
-    }
-    const node = new PIXI.Container();
-    if (e.kind === "curve2d" && e.points && e.points.length >= 2) {
-      const g = new PIXI.Graphics();
-      g.moveTo(e.points[0][0], e.points[0][1]);
-      for (const p of e.points.slice(1)) {
-        g.lineTo(p[0], p[1]);
-        this.growBounds(p[0], p[1]);
+  private show(o: SceneObject): void {
+    this.drop(o.id);
+    const g = o.geom;
+    if (!inPlaneZ0(g)) return;
+    const color = hex(colorOf(o));
+    const px = 1 / Math.max(Math.abs(this.world.scale.x), 1e-9); // one screen pixel in world units
+    const gfx = new PIXI.Graphics();
+    const stroke = (polylines: Vec3[][]) => {
+      for (const line of polylines) {
+        gfx.moveTo(line[0][0], line[0][1]);
+        for (const p of line.slice(1)) gfx.lineTo(p[0], p[1]);
       }
-      this.growBounds(e.points[0][0], e.points[0][1]);
-      g.stroke({ width: 1.5 / Math.max(this.world.scale.x, 1e-9), color: cssToHex(e.color, 0xff5533) });
-      node.addChild(g);
-      this.nodes.set(e.id, node);
-      this.world.addChild(node);
-    } else if (e.kind === "points2d" && e.positions && e.positions.length > 0) {
-      // One GPU-batched particle draw call regardless of point count.
-      const container = new PIXI.ParticleContainer({ texture: PIXI.Texture.WHITE });
-      const tint = cssToHex(e.color, 0x1a8cd8);
-      const size = Math.max(e.size ?? 3, 1) / Math.max(this.world.scale.x, 1e-9);
-      for (const p of e.positions) {
-        container.addParticle(
-          new PIXI.Particle({ texture: PIXI.Texture.WHITE, x: p[0], y: p[1], scaleX: size, scaleY: size, tint, anchorX: 0.5, anchorY: 0.5 }),
-        );
-        this.growBounds(p[0], p[1]);
-      }
-      node.addChild(container);
-      this.nodes.set(e.id, node);
-      this.world.addChild(node);
-    }
-    // 3D kinds belong to the Babylon pane — ignored here.
+      gfx.stroke({ width: 2 * px, color });
+    };
+    if (isCurve(g)) stroke([tessellateCurve(g, this.box)]);
+    else if (g.type === "polyline") stroke([g.points]);
+    else if (g.type === "arrow") stroke(arrowPolylines(g.at, g.vec));
+    else if (g.type === "point") gfx.circle(g.p[0], g.p[1], 4 * px).fill(color);
+    else if (g.type === "points") {
+      for (const p of g.positions) gfx.circle(p[0], p[1], (g.size ?? 3) * px);
+      gfx.fill(color);
+    } else return;
+    this.nodes.set(o.id, gfx);
+    this.world.addChild(gfx);
   }
 }
