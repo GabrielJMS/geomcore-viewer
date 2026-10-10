@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import http.client
 import json
 import os
+import socket
 import subprocess
 import sys
 import time
@@ -17,18 +19,24 @@ from .server import APP, PROTOCOL
 _children: list[subprocess.Popen] = []  # keep handles so they aren't reported as leaked
 
 
+def _timed_out(err: OSError) -> bool:
+    reason = err.reason if isinstance(err, urllib.error.URLError) else err
+    return isinstance(reason, (TimeoutError, socket.timeout))
+
+
 def probe(url: str, timeout: float = 0.5) -> str:
     """``"ours"`` (a v2 geomcore-viewer answers), ``"foreign"`` (something else
-    answers) or ``"none"`` (nothing listens)."""
+    answers), ``"unresponsive"`` (something accepts the connection but does not
+    answer within ``timeout``) or ``"none"`` (nothing listens)."""
     try:
         with urllib.request.urlopen(f"{url}/api/health", timeout=timeout) as res:
             doc = json.loads(res.read())
     except urllib.error.HTTPError:
         return "foreign"
-    except ValueError:
+    except (ValueError, http.client.HTTPException):
         return "foreign"
-    except OSError:
-        return "none"
+    except OSError as err:
+        return "unresponsive" if _timed_out(err) else "none"
     if isinstance(doc, dict) and doc.get("app") == APP and doc.get("protocol") == PROTOCOL:
         return "ours"
     return "foreign"
@@ -67,6 +75,11 @@ def ensure_server(url: str, timeout: float = 5.0) -> bool:
     parsed = urlparse(url)
     if parsed.hostname not in ("127.0.0.1", "localhost"):
         raise RuntimeError(f"no geomcore-viewer at {url} (only local servers are started automatically)")
+    if state == "unresponsive":
+        raise RuntimeError(
+            f"{url} accepted the connection but did not answer /api/health in time (a hung server?). "
+            "Stop it with `python -m geomcore_viewer stop`, or pass Viewer(url=...)"
+        )
     port = parsed.port or 80
     proc = _spawn(port)
     deadline = time.monotonic() + timeout

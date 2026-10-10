@@ -52,3 +52,49 @@ def test_cli_stop_without_server(capsys):
     port = _free_port()
     main(["stop", "--port", str(port)])
     assert "no viewer running" in capsys.readouterr().out
+
+
+def _raw_listener(handler):
+    """Serve one raw TCP connection on 127.0.0.1 with ``handler(conn)``; return (url, sock)."""
+    srv = socket.socket()
+    srv.bind(("127.0.0.1", 0))
+    srv.listen(1)
+
+    def run():
+        conn, _ = srv.accept()
+        try:
+            handler(conn)
+        except OSError:
+            pass
+        finally:
+            conn.close()
+
+    threading.Thread(target=run, daemon=True).start()
+    return f"http://127.0.0.1:{srv.getsockname()[1]}", srv
+
+
+def test_non_http_listener_is_foreign():
+    def speak_ssh(conn):
+        conn.sendall(b"SSH-2.0-OpenSSH\r\n")
+
+    url, srv = _raw_listener(speak_ssh)
+    try:
+        assert probe(url) == "foreign"
+    finally:
+        srv.close()
+
+
+def test_hung_listener_is_unresponsive():
+    release = threading.Event()
+
+    def hang(conn):
+        release.wait(5)
+
+    url, srv = _raw_listener(hang)
+    try:
+        assert probe(url, timeout=0.3) == "unresponsive"
+        with pytest.raises(RuntimeError, match="did not answer"):
+            ensure_server(url)
+    finally:
+        release.set()
+        srv.close()
