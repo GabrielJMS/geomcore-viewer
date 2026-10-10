@@ -61,6 +61,12 @@ describe("bounds", () => {
     });
     const parabola: Geom = { type: "parabola", frame: world, f: 0.25, range: [-2, 2] };
     expect(sceneBounds([parabola])).toEqual({ min: [0, -2, 0], max: [4, 2, 0] });
+    expect(sceneBounds([{ type: "line", o: [0, 0, 0], d: [1, 0, 0], range: [50, 100] }])).toEqual({
+      min: [50, 0, 0],
+      max: [100, 0, 0],
+    });
+    const away: Geom = { type: "parabola", frame: world, f: 0.25, range: [1, 2] };
+    expect(sceneBounds([away])).toEqual({ min: [1, 1, 0], max: [4, 2, 0] });
   });
 
   it("grows the scene box ×1.5 into a cube, or falls back to ±5", () => {

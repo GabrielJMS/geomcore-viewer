@@ -7,7 +7,8 @@ const FALLBACK: Box = { min: [-5, -5, -5], max: [5, 5, 5] };
 
 /**
  * Bounding box of everything with a finite extent. Infinite curves add only
- * their origin; surfaces add a coarse sample of their window; notes add nothing.
+ * their origin; a ranged curve adds its endpoints (and a conic its vertex when
+ * in range); surfaces add a coarse sample of their window; notes add nothing.
  */
 export function sceneBounds(geoms: Iterable<Geom>): Box | null {
   const min: Vec3 = [Infinity, Infinity, Infinity];
@@ -20,11 +21,11 @@ export function sceneBounds(geoms: Iterable<Geom>): Box | null {
       max[i] = Math.max(max[i], p[i] + pad);
     }
   };
-  /** Explicit ranges make infinite curves finite; include their ends and, for conics, the vertex. */
+  /** A ranged curve is finite: grow by its endpoints and, for conics, by the vertex when t = 0 is in range. */
   const growRange = (g: CurveGeom, [t0, t1]: Range) => {
     grow(evalCurve(g, t0));
     grow(evalCurve(g, t1));
-    if (t0 <= 0 && 0 <= t1) grow(evalCurve(g, 0)); // vertex (a line's origin is already in)
+    if (g.type !== "line" && t0 <= 0 && 0 <= t1) grow(evalCurve(g, 0));
   };
   for (const g of geoms) {
     switch (g.type) {
@@ -35,12 +36,12 @@ export function sceneBounds(geoms: Iterable<Geom>): Box | null {
       case "arrow": grow(g.at); grow(add(g.at, g.vec)); break;
       case "text": grow(g.at); break;
       case "line":
-        grow(g.o);
         if (g.range) growRange(g, g.range);
+        else grow(g.o);
         break;
       case "parabola": case "hyperbola":
-        grow(g.frame.o);
         if (g.range) growRange(g, g.range);
+        else grow(g.frame.o);
         break;
       case "circle": grow(g.frame.o, g.r); break;
       case "ellipse": grow(g.frame.o, Math.max(g.a, g.b)); break;
