@@ -1,46 +1,85 @@
 # geomcore-viewer
 
-Browser viewer for [geomcore](https://github.com/GabrielJMS/geomcore) — parametric curves and surfaces, visualized live from Rust **and** Python through one shared protocol.
+A live, geometry-aware browser viewer for [geomcore](https://github.com/GabrielJMS/geomcore).
+Write geomcore code, call `view.add(...)`, and the curves, surfaces and
+intersection points appear — exactly, not as hand-sampled polylines — in a
+browser tab that updates as your script, debugger or notebook runs.
 
-- **3D pane:** Babylon.js — `Curve3D` as line systems, `Surface` as triangulated meshes, point clouds.
-- **2D pane:** PixiJS (WebGL) — `Curve2D` / curve-on-surface parameter-space plots, built to hold millions of points where Canvas2D (`plot_data`-style) falls over.
-- **Live updates:** clients `POST` entities to a tiny local server; the page listens over SSE and appends to the scene incrementally. No websocket library needed anywhere.
-- **Static-friendly:** the same page loads `sample-scene.json`, `?scene=<url>`, or a drag-dropped file — that's what gets embedded in the docs.
+```python
+# conics.py — run with: python conics.py   (re-run after every edit)
+from geomcore import Frame3D, Point3D, Vector3D
+from geomcore.curves import Circle3D, Ellipse3D
+import geomcore_viewer as gv
+
+view = gv.Viewer("Ellipse ∩ circle")
+E = Ellipse3D.from_frame(Frame3D.world(), 3.0, 2.0)
+C = Circle3D(Point3D(2, 1, 0), Vector3D.z(), 1.5)
+
+view.add(E, label="E")
+view.add(C, label="C")
+view.add(C.intersect_ellipse(E), label="P")   # → P₁, P₂
+```
+
+- **One verb.** `add` takes geomcore curves, surfaces and points, intersection
+  results as returned (`("points", …)`, `("two_circles", …)`, `("empty", None)` →
+  a note "P: ∅"), and lists of those.
+- **Live, incremental.** The first `add` starts a background server and opens
+  the tab; later runs reuse it. Re-running a script swaps the scene in place;
+  inside one process (`pdb`, IPython, Jupyter) every `gv.add(x)` lands in the
+  same scene. Re-adding a label updates that object instead of duplicating it.
+- **Exact.** Objects travel as analytic definitions (frame + radii); the
+  viewer evaluates them with geomcore's own parametrizations, so lines,
+  parabolas and hyperbolas reach the edge of the view.
+- **Static too.** `view.save("scene.json")`, then open the hosted viewer with
+  `?scene=<url>` or drag-drop the file onto it.
+
+## Install
+
+```sh
+pip install geomcore-viewer        # stdlib only; the built viewer ships in the wheel
+```
+
+## API
+
+| Call | Does |
+|---|---|
+| `gv.Viewer(title, view="auto"\|"2d"\|"3d", keep=False)` | a scene (new run) |
+| `view.add(*objs, label=, group=, color=, width=, dashed=, opacity=, u=, v=, foci=, asymptotes=, …)` | show objects → `Handle` / list |
+| `handle.update(color=…)`, `handle.remove()` | change or remove one object |
+| `view.polyline(pts)`, `view.mesh(v, i)`, `view.arrow(at, vec)`, `view.text(at, s)` | raw geometry |
+| `view.clear()`, `view.save(path)`, `view.open()` | housekeeping |
+| `gv.add(...)`, `gv.clear()` | same, on the most recent viewer (handy in `pdb`) |
+| `geomcore-viewer serve` / `geomcore-viewer stop` | run / stop the server by hand |
+
+The server listens on `http://127.0.0.1:8765` by default. If that port is
+busy, set `GEOMCORE_VIEWER_URL=http://127.0.0.1:<other port>` (every script
+and `gv.add` picks it up; a started server listens on that port) or pass
+`gv.Viewer(url=...)`. An explicit `url=` wins over the variable. Stop such a server with
+`geomcore-viewer stop --port <other port>`.
 
 ## Layout
 
 | Path | What |
 |---|---|
-| `protocol/SCENE.md` | The scene JSON schema both clients speak |
-| `frontend/` | Vite + TypeScript app (Babylon 3D + PixiJS 2D), deployed to GitHub Pages |
-| `python/geomcore_viewer/` | Stdlib-only Python client: `Viewer`, sampling helpers, local server |
-| `clients/rust/` | Dependency-light Rust client (`serde_json` only, HTTP over `std`) |
+| `protocol/SCENE.md` | protocol v2: the JSON every client and the viewer speak |
+| `python/geomcore_viewer/` | client (`viewer.py`), geomcore adapter (`adapt.py`), server (`server.py`, `spawn.py`) |
+| `frontend/` | Vite + TypeScript viewer (Babylon.js 3D, PixiJS 2D); `src/geom/` is the evaluator core |
+| `clients/rust/` | Rust client (protocol v1 until phase 4 of the v2 plan) |
+| `examples/` | `conics_2d.py`, `quadrics_3d.py` |
 
-## Quick start (Python)
+## Development
 
-```python
-from geomcore_viewer import Viewer
-import math
-
-viewer = Viewer()  # serves frontend locally, opens browser
-viewer.add_curve3d("circle", [(2 * math.cos(t), 2 * math.sin(t), 0.0) for t in frange(0, 2 * math.pi, 128)])
-viewer.add_points2d("samples", [...])
-```
-
-With real `geomcore` objects, sampling helpers accept any callable, so
-`circle.eval_point`-style APIs plug in directly — see `python/geomcore_viewer/sampling.py`.
-
-## Quick start (Rust)
-
-```rust
-let viewer = geomcore_viewer::Viewer::new("http://localhost:8765")?;
-viewer.add_curve3d("circle", &sampled_points)?;
+```sh
+python3 -m venv .venv && .venv/bin/pip install pytest
+PYTHONPATH=python:../geomcore/geomcore-py .venv/bin/python -m pytest python/tests -q
+cd frontend && npm ci && npm test && npm run build && cd ..
+scripts/bundle-frontend.sh          # copy the build into the Python package
+scripts/refresh-fixtures.sh         # re-vendor geomcore's golden fixtures
 ```
 
 ## Live demo
 
-<https://gabrieljms.github.io/geomcore-viewer/> — bundled `sample-scene.json`
-(circle coaxial with a cylinder, plus its 2D p-curve image).
+<https://gabrieljms.github.io/geomcore-viewer/> — the bundled sample scene.
 
 ## License
 

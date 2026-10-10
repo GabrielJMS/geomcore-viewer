@@ -11,6 +11,7 @@ jobs:
       - uses: actions/setup-node@v4
         with: { node-version: 22, cache: npm, cache-dependency-path: frontend/package-lock.json }
       - run: npm ci
+      - run: npm test
       - run: npm run build
   python:
     runs-on: ubuntu-latest
@@ -21,6 +22,19 @@ jobs:
       - run: pip install pytest
       - run: pytest python/tests -q
         env: { PYTHONPATH: python }
+  wheel:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm, cache-dependency-path: frontend/package-lock.json }
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - run: npm ci
+        working-directory: frontend
+      - run: scripts/bundle-frontend.sh
+      - run: pip install build && python -m build python/
+      - run: unzip -l python/dist/*.whl | grep -q 'geomcore_viewer/_frontend/index.html'
   rust:
     runs-on: ubuntu-latest
     steps:
