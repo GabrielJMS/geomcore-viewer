@@ -258,18 +258,35 @@ class Viewer:
     def _connect(self) -> bool:
         if self._online:
             return True
-        if self._online is None and self.spawn:
-            started = ensure_server(self.url)
-            self._online = True
-            if started:
-                print(f"geomcore-viewer: {self.url}")
-                if self.open_browser:
-                    webbrowser.open(self.url)
-            return True
+        if self.spawn:
+            return self._spawn_or_find()
         self._online = probe(self.url) == "ours"
         if not self._online:
             self._warn(f"no geomcore-viewer at {self.url}; keeping objects locally (save() still works)")
+        else:
+            self._reconnected()
         return self._online
+
+    def _spawn_or_find(self) -> bool:
+        """Find the server, starting it when it is not running (also after it died mid-session)."""
+        first = self._online is None
+        try:
+            started = ensure_server(self.url)
+        except RuntimeError as err:
+            if first:
+                raise
+            self._warn(f"geomcore-viewer at {self.url} is still unreachable ({err}); keeping objects locally")
+            return False
+        if started:
+            print(f"geomcore-viewer: {self.url}")
+            if self.open_browser and first:  # a tab that is already open reconnects by itself
+                webbrowser.open(self.url)
+        self._online = True
+        self._reconnected()
+        return True
+
+    def _reconnected(self) -> None:
+        self._warned = False  # a later outage deserves its own warning
 
     def _request(self, method: str, path: str, body: dict | None = None, missing_ok: bool = False) -> bool:
         data = None if body is None else json.dumps(body, allow_nan=False).encode()

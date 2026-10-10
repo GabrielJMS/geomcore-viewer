@@ -212,7 +212,7 @@ def test_server_rejection_does_not_block_later_adds(server):
 
 def test_offline_removal_is_replayed_and_scene_resent_after_restart(tmp_path):
     first = Server(tmp_path, port=0).start()
-    view = Viewer(url=first.url, open_browser=False)
+    view = Viewer(url=first.url, open_browser=False, spawn=False)
     handle_a = view.add(Point3D(0, 0), label="a")
     view.add(Point3D(1, 0), label="b")
     first.stop()
@@ -228,7 +228,7 @@ def test_offline_removal_is_replayed_and_scene_resent_after_restart(tmp_path):
 
 def test_offline_clear_is_replayed_after_reconnect(tmp_path):
     first = Server(tmp_path, port=0).start()
-    view = Viewer(url=first.url, open_browser=False, keep=True)
+    view = Viewer(url=first.url, open_browser=False, keep=True, spawn=False)
     view.add(Point3D(0, 0), label="a")
     first.stop()
     with pytest.warns(RuntimeWarning, match="unreachable"):
@@ -281,3 +281,64 @@ def test_module_level_default_viewer_reads_the_variable_when_created(monkeypatch
     monkeypatch.setattr(sys.modules["geomcore_viewer.viewer"], "_default", None)
     monkeypatch.setenv("GEOMCORE_VIEWER_URL", "http://127.0.0.1:8799")
     assert gv.viewer().url == "http://127.0.0.1:8799"
+
+
+def _free_port():
+    with socket.socket() as s:
+        s.bind(("127.0.0.1", 0))
+        return s.getsockname()[1]
+
+
+def test_dead_server_is_respawned_on_the_next_add():
+    from geomcore_viewer.spawn import stop_server
+
+    url = f"http://127.0.0.1:{_free_port()}"
+    view = Viewer(url=url, open_browser=False)
+    try:
+        view.add(Point3D(0, 0), label="a")
+        assert stop_server(url)
+        with pytest.warns(RuntimeWarning, match="unreachable"):
+            view.add(Point3D(1, 0), label="b")
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            view.add(Point3D(2, 0), label="c")
+        with urllib.request.urlopen(f"{url}/api/scene", timeout=5) as res:
+            assert [o["id"] for o in json.loads(res.read())["objects"]] == ["a", "b", "c"]
+    finally:
+        stop_server(url)
+
+
+def test_browser_opens_only_on_the_first_connect(monkeypatch):
+    from geomcore_viewer.spawn import stop_server
+
+    opened = []
+    monkeypatch.setattr("webbrowser.open", opened.append)
+    url = f"http://127.0.0.1:{_free_port()}"
+    view = Viewer(url=url)
+    try:
+        view.add(Point3D(0, 0), label="a")
+        assert opened == [url]
+        assert stop_server(url)
+        with pytest.warns(RuntimeWarning, match="unreachable"):
+            view.add(Point3D(1, 0), label="b")
+        view.add(Point3D(2, 0), label="c")
+        assert opened == [url]
+    finally:
+        stop_server(url)
+
+
+def test_a_later_outage_warns_again(tmp_path):
+    first = Server(tmp_path, port=0).start()
+    view = Viewer(url=first.url, open_browser=False, spawn=False)
+    view.add(Point3D(0, 0), label="a")
+    first.stop()
+    with pytest.warns(RuntimeWarning, match="unreachable"):
+        view.add(Point3D(1, 0), label="b")
+    second = Server(tmp_path, port=first.port).start()
+    try:
+        view.add(Point3D(2, 0), label="c")
+        assert _ids(second) == ["a", "b", "c"]
+    finally:
+        second.stop()
+    with pytest.warns(RuntimeWarning, match="unreachable"):
+        view.add(Point3D(3, 0), label="d")
