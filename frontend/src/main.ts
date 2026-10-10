@@ -16,8 +16,14 @@ const view2d = new View2D(store, byId("view2d"));
 mountPanel(store, byId("entity-list"), byId("title"), byId("status"));
 
 byId("fit").addEventListener("click", () => {
-  view3d.fit();
+  view3d.fitRequested();
   view2d.fitRequested();
+});
+byId<HTMLInputElement>("autofit").addEventListener("change", (e) => {
+  if ((e.target as HTMLInputElement).checked) {
+    view3d.fitRequested();
+    view2d.fitRequested();
+  }
 });
 byId("clear").addEventListener("click", () => void store.clearAll());
 

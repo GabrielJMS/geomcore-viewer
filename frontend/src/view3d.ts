@@ -1,4 +1,5 @@
 import * as BABYLON from "@babylonjs/core";
+import { cameraScale } from "./camera";
 import { halfSize, sameBox, sceneBounds, viewBox } from "./geom/bounds";
 import { arrowPolylines, tessellateCurve, tessellateSurface } from "./geom/tessellate";
 import { isCurve, isSurface } from "./geom/types";
@@ -9,16 +10,13 @@ import { colorOf } from "./ui/colors";
 
 const v3 = (p: Vec3) => new BABYLON.Vector3(p[0], p[1], p[2]);
 
-/** Babylon's default feel (wheelPrecision 3, panningSensibility 1000) at a camera radius of 10. */
-const WHEEL_FEEL = 30;
-const PAN_FEEL = 10000;
-
 /** Babylon 3D pane, z up and right-handed like geomcore. Phase 1: thin lines, plain markers. */
 export class View3D {
   readonly scene: BABYLON.Scene;
   readonly camera: BABYLON.ArcRotateCamera;
   private meshes = new Map<string, BABYLON.AbstractMesh[]>();
   private box: Box = viewBox([]);
+  private userMoved = false;
 
   constructor(private store: Store, canvas: HTMLCanvasElement) {
     const engine = new BABYLON.Engine(canvas, true);
@@ -28,11 +26,16 @@ export class View3D {
     this.camera = new BABYLON.ArcRotateCamera("cam", Math.PI / 2, Math.PI / 3, 10, BABYLON.Vector3.Zero(), this.scene);
     this.camera.upVector = new BABYLON.Vector3(0, 0, 1);
     this.camera.attachControl(canvas, true);
+    // Once the user has orbited, panned or zoomed, auto-fit leaves the camera alone until "fit".
+    canvas.addEventListener("pointermove", (ev) => {
+      if (ev.buttons) this.userMoved = true;
+    });
+    canvas.addEventListener("wheel", () => (this.userMoved = true), { passive: true });
     new BABYLON.HemisphericLight("light", new BABYLON.Vector3(0.3, 0.5, 1), this.scene);
     store.onChange((ev) => this.onStore(ev));
     window.addEventListener("resize", () => {
       engine.resize();
-      if (this.autoFit()) this.fit();
+      if (this.autoFit() && !this.userMoved) this.fit();
     });
     engine.runRenderLoop(() => this.scene.render());
     this.rebuild();
@@ -52,27 +55,38 @@ export class View3D {
     if (ev.type === "reset" || boxChanged) this.rebuild();
     else if (ev.type === "upsert") ev.objects.forEach((o) => this.show(o));
     else this.drop(ev.id);
-    if (this.autoFit()) this.fit();
+    if (this.autoFit() && !this.userMoved) this.fit();
+    else this.applyScale();
   }
 
   private autoFit(): boolean {
     return (document.getElementById("autofit") as HTMLInputElement | null)?.checked ?? true;
   }
 
-  fit(): void {
+  /** The "fit" button (or turning auto-fit on): frame the scene and follow it again. */
+  fitRequested(): void {
+    this.userMoved = false;
+    this.fit();
+  }
+
+  /** Distance at which the camera frames the scene (the field of view is vertical, so a narrow pane backs off). */
+  private fitRadius(b: Box): number {
+    const aspect = this.scene.getEngine().getAspectRatio(this.camera);
+    return (Math.max(v3(b.max).subtract(v3(b.min)).length() / 2, 1e-6) * 3) / Math.min(1, aspect || 1);
+  }
+
+  /** Clip planes and zoom feel follow the scene's size, also when the camera is not moved. */
+  private applyScale(): void {
+    const b = sceneBounds(this.geoms());
+    if (b) Object.assign(this.camera, cameraScale(this.fitRadius(b)));
+  }
+
+  private fit(): void {
     const b = sceneBounds(this.geoms());
     if (!b) return;
-    const center = v3(b.min).add(v3(b.max)).scale(0.5);
-    this.camera.target.copyFrom(center);
-    // The camera's field of view is vertical: in a pane narrower than tall, back off so the width fits too.
-    const aspect = this.scene.getEngine().getAspectRatio(this.camera);
-    const radius = (Math.max(v3(b.max).subtract(v3(b.min)).length() / 2, 1e-6) * 3) / Math.min(1, aspect || 1);
-    this.camera.radius = radius;
-    // The default clip planes (1 .. 10000) would hide scenes much smaller or larger than ~10 units.
-    this.camera.minZ = radius / 1000;
-    this.camera.maxZ = radius * 100;
-    this.camera.wheelPrecision = WHEEL_FEEL / radius;
-    this.camera.panningSensibility = PAN_FEEL / radius;
+    this.camera.target.copyFrom(v3(b.min).add(v3(b.max)).scale(0.5));
+    this.camera.radius = this.fitRadius(b);
+    this.applyScale();
   }
 
   private rebuild(): void {
