@@ -62,6 +62,8 @@ CASES = [
      {"semi_angle": 0.4, "ref_radius": 2.0}),
     ("Cone", {"type": "cone", "frame": TILTED, "semi_angle": 0.4, "ref_radius": 0.0},
      {"semi_angle": 0.4, "ref_radius": 0.0}),
+    ("Cone", {"type": "cone", "frame": TILTED, "semi_angle": -0.4, "ref_radius": 0.0},
+     {"semi_angle": -0.4, "ref_radius": 0.0}),
     ("Sphere", {"type": "sphere", "frame": TILTED, "r": 3.0}, {"center": Point3D(*TILTED["o"]), "radius": 3.0}),
     ("Torus", {"type": "torus", "frame": TILTED, "R": 4.0, "r": 1.0}, {"major_radius": 4.0, "minor_radius": 1.0}),
 ]
@@ -114,6 +116,19 @@ def test_not_analytic_and_unknown_tags_warn():
     parts = to_objects(("bogus", Point3D(0, 0, 0)), "Y")
     assert parts[0]["geom"]["type"] == "point"
     assert parts[1]["geom"] == {"type": "note", "text": "Y: unrecognized result tag 'bogus'", "level": "warn"}
+
+
+@pytest.mark.parametrize("tag", ["circle", "tangent"])
+def test_known_tag_without_geometry_warns(tag):
+    notes = [p["geom"] for p in to_objects((tag, None), "X")]
+    warns = [g for g in notes if g["level"] == "warn"]
+    assert len(warns) == 1
+    assert warns[0]["text"] == f"X: result '{tag}' has no drawable geometry"
+
+
+def test_points_tag_with_only_scalars_warns():
+    [note] = to_objects(("points", [1.0, 2.0]), "X")
+    assert note["geom"]["level"] == "warn" and "no drawable geometry" in note["geom"]["text"]
 
 
 def test_tangent_result_draws_payload_and_notes_it():
@@ -177,6 +192,7 @@ def test_real_geomcore_types_round_trip():
             assert eval_curve(part["geom"], t) == pytest.approx(as_vec(curve.eval_point(t)), abs=1e-9), type(curve).__name__
     surfaces = [
         Plane.from_frame(tilted), Cylinder.from_frame(tilted, 2.0), Cone.from_frame(tilted, 0.4, 2.0),
+        Cone.from_frame(tilted, 0.4, 0.0),
         Sphere(P(1, 2, 3), 3.0), Torus(P(1, 2, 3), V(1, 1, 1), 4.0, 1.0),
     ]
     for surface in surfaces:

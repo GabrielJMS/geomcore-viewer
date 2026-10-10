@@ -288,11 +288,16 @@ def _result(tag: str, payload, label: str | None, u, v) -> list[dict]:
         return [_note(EMPTY_NOTES[tag], label)]
     if tag == "not_analytic":
         return [_note("no closed form — try geomcore.intersect_marching", label, "warn")]
-    parts = _labelled(_leaves(payload), label, u, v)
+    leaves = _leaves(payload)
+    parts = _labelled(leaves, label, u, v)
     if tag in INFO_NOTES:
         parts.append(_note(INFO_NOTES[tag], label))
-    elif tag not in POINT_TAGS and tag not in CURVE_TAGS:
+    known = tag in INFO_NOTES or tag in POINT_TAGS or tag in CURVE_TAGS
+    if not known:
         parts.append(_note(f"unrecognized result tag {tag!r}", label, "warn"))
+    elif not leaves:
+        # Last, so it wins over the info note when both share the same key.
+        parts.append(_note(f"result {tag!r} has no drawable geometry", label, "warn"))
     return parts
 
 
