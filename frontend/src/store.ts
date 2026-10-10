@@ -59,6 +59,11 @@ export class Store {
   /** Apply one live server event (see SCENE.md "Runs"). */
   apply(ev: ServerEvent): void {
     switch (ev.type) {
+      case "scene":
+        // The first event of every /events connection: the full scene, taken under the
+        // server's lock, so everything after it is a delta on top of exactly this.
+        if (this.loadJson(ev.doc, "live")) this.setStatus("live");
+        return;
       case "run":
         this.run = ev.run;
         this.swapPending = !ev.keep;
@@ -185,7 +190,6 @@ export class Store {
     if (!this.loadJson(scene.raw, "live")) return "failed";
     this.setStatus("live");
     const events = new EventSource("events");
-    let dropped = false;
     events.onmessage = (msg) => {
       let ev: ServerEvent;
       try {
@@ -196,21 +200,8 @@ export class Store {
       }
       this.apply(ev);
     };
-    events.onerror = () => {
-      dropped = true;
-      this.setStatus("live · reconnecting…");
-    };
-    events.onopen = () => {
-      if (!dropped) return;
-      dropped = false; // server restarted: our copy may be stale
-      const couldNotReload = () => this.setStatus("live · could not reload scene");
-      void this.fetchLiveScene()
-        .then((fresh) => {
-          if (fresh.kind !== "doc") return couldNotReload();
-          if (this.loadJson(fresh.raw, "live")) this.setStatus("live");
-        })
-        .catch(couldNotReload);
-    };
+    // EventSource reconnects by itself; the server opens every connection with a `scene` event.
+    events.onerror = () => this.setStatus("live · reconnecting…");
     return "live";
   }
 

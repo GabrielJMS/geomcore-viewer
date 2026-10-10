@@ -101,7 +101,26 @@ script never flashes an empty view, and the camera stays where it was.
 | `POST` | `/api/clear` | — | empty scene |
 | `POST` | `/api/shutdown` | — | stop the server |
 | `POST` | `/api/add` | one v1 entity | v1 clients (kept until the Rust client speaks v2) |
-| `GET` | `/events` | — | SSE: `run`, `upsert`, `remove`, `clear` |
+| `GET` | `/events` | — | SSE: `scene`, then `run`, `upsert`, `remove`, `clear` |
+
+### Events
+
+Every `/events` connection (first connect and every automatic reconnect)
+starts with `{"type": "scene", "doc": <full document>}`, taken under the
+same lock that registers the subscriber, so no change can fall between the
+snapshot and the events that follow it. The viewer treats `scene` as a full
+replace (a reset: any pending run swap is dropped). The other events are
+deltas on top of it:
+
+| `type` | Fields |
+|---|---|
+| `scene` | `doc` |
+| `run` | `run`, `keep` |
+| `upsert` | `objects`, `title`, `view` |
+| `remove` | `id` |
+| `clear` | — |
+
+Clients ignore event types they do not know.
 
 Every `POST` must send `Content-Type: application/json` (anything else
 gets `415`). Any website can make a browser call `127.0.0.1`, so the server

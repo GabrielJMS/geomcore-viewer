@@ -74,15 +74,18 @@ class _State:
         self.subscribers: list[queue.Queue[str]] = []
         self.lock = threading.Lock()
 
+    def _doc(self) -> dict:
+        return {
+            "version": PROTOCOL,
+            "title": self.title,
+            "run": self.run,
+            "view": self.view,
+            "objects": list(self.objects.values()),
+        }
+
     def snapshot(self) -> dict:
         with self.lock:
-            return {
-                "version": PROTOCOL,
-                "title": self.title,
-                "run": self.run,
-                "view": self.view,
-                "objects": list(self.objects.values()),
-            }
+            return self._doc()
 
     def _broadcast(self, event: dict) -> None:
         payload = f"data: {json.dumps(event)}\n\n"
@@ -121,8 +124,14 @@ class _State:
             self._broadcast({"type": "clear"})
 
     def subscribe(self) -> queue.Queue[str]:
+        """A new event queue that starts with the full scene.
+
+        The scene is enqueued under the lock that registers the subscriber, so no
+        event can fall between the snapshot and the events that follow it.
+        """
         sub: queue.Queue[str] = queue.Queue()
         with self.lock:
+            sub.put(f"data: {json.dumps({'type': 'scene', 'doc': self._doc()})}\n\n")
             self.subscribers.append(sub)
         return sub
 

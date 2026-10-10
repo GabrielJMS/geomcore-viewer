@@ -38,6 +38,7 @@ export interface Problem {
 }
 
 export type ServerEvent =
+  | { type: "scene"; doc: unknown }
   | { type: "run"; run: string; keep: boolean }
   | { type: "upsert"; objects: unknown[]; title?: string; view?: string }
   | { type: "remove"; id: string }

@@ -198,3 +198,74 @@ describe("Store.clearAll", () => {
     expect(store.status).toBe("");
   });
 });
+
+describe("scene event", () => {
+  const doc = (run: string, ...names: string[]) => ({
+    version: 2, title: run, run, view: "3d", objects: names.map((n) => pt(n)),
+  });
+
+  it("replaces the whole state, then later events apply on top", () => {
+    const { store, events } = storeWith("old");
+    store.apply({ type: "scene", doc: doc("r2", "a", "b") });
+    expect(ids(store)).toEqual(["a", "b"]);
+    expect([store.run, store.title, store.view]).toEqual(["r2", "r2", "3d"]);
+    expect(store.status).toBe("live");
+    store.apply({ type: "upsert", objects: [pt("c")] });
+    store.apply({ type: "remove", id: "a" });
+    expect(ids(store)).toEqual(["b", "c"]);
+    expect(events).toContain("reset");
+  });
+
+  it("is a full reset: a pending run swap does not wipe the scene's first upsert", () => {
+    const { store } = storeWith("old");
+    store.apply({ type: "run", run: "r2", keep: false });
+    store.apply({ type: "scene", doc: doc("r2", "a") });
+    store.apply({ type: "upsert", objects: [pt("b")] });
+    expect(ids(store)).toEqual(["a", "b"]);
+  });
+
+  it("shows an unsupported scene instead of throwing", () => {
+    const { store } = storeWith("old");
+    store.apply({ type: "scene", doc: { version: 9, objects: [] } });
+    expect(store.status).toMatch(/unsupported scene version 9/);
+  });
+});
+
+describe("Store live connection", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  class FakeEventSource {
+    static last: FakeEventSource;
+    onmessage: ((msg: { data: string }) => void) | null = null;
+    onerror: (() => void) | null = null;
+    onopen: (() => void) | null = null;
+    constructor() {
+      FakeEventSource.last = this;
+    }
+    send(ev: object) {
+      this.onmessage?.({ data: JSON.stringify(ev) });
+    }
+  }
+
+  it("takes its state from the scene event on every (re)connection, without refetching", async () => {
+    const fetchMock = vi.fn(async () => Response.json({ version: 2, title: "", run: "r1", view: "auto", objects: [pt("a")] }));
+    vi.stubGlobal("fetch", fetchMock);
+    vi.stubGlobal("location", { search: "" });
+    vi.stubGlobal("EventSource", FakeEventSource);
+    const store = new Store();
+    await store.load();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(store.status).toBe("live");
+    const es = FakeEventSource.last;
+    es.send({ type: "scene", doc: { version: 2, title: "", run: "r1", view: "auto", objects: [pt("a"), pt("b")] } });
+    es.send({ type: "upsert", objects: [pt("c")] });
+    expect(ids(store)).toEqual(["a", "b", "c"]);
+    es.onerror?.();
+    expect(store.status).toBe("live · reconnecting…");
+    es.onopen?.();
+    es.send({ type: "scene", doc: { version: 2, title: "", run: "r2", view: "auto", objects: [pt("z")] } });
+    expect(ids(store)).toEqual(["z"]);
+    expect(store.status).toBe("live");
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+});

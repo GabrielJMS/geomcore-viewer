@@ -101,31 +101,48 @@ def test_v1_add_still_accepted(server):
     assert _get(f"{server.url}/api/scene")["objects"][0]["kind"] == "curve3d"
 
 
+def _listen(server, count, events, ready):
+    with urllib.request.urlopen(f"{server.url}/events", timeout=10) as res:
+        for raw in res:
+            line = raw.decode().strip()
+            if line == ": connected":
+                ready.set()
+            if line.startswith("data: "):
+                events.append(json.loads(line[len("data: "):]))
+                if len(events) == count:
+                    return
+
+
 def test_sse_event_sequence(server):
     events = []
     ready = threading.Event()
-
-    def listen():
-        with urllib.request.urlopen(f"{server.url}/events", timeout=10) as res:
-            for raw in res:
-                line = raw.decode().strip()
-                if line == ": connected":
-                    ready.set()
-                if line.startswith("data: "):
-                    events.append(json.loads(line[len("data: "):]))
-                    if len(events) == 4:
-                        return
-
-    t = threading.Thread(target=listen, daemon=True)
+    t = threading.Thread(target=_listen, args=(server, 5, events, ready), daemon=True)
     t.start()
     assert ready.wait(5)
     _send(f"{server.url}/api/objects", {"run": "r1", "objects": [_obj("a")]})
     _send(f"{server.url}/api/objects/a", method="DELETE")
     _send(f"{server.url}/api/clear")
     t.join(5)
-    assert [e["type"] for e in events] == ["run", "upsert", "remove", "clear"]
-    assert events[0] == {"type": "run", "run": "r1", "keep": False}
-    assert events[1]["objects"][0]["id"] == "a"
+    assert [e["type"] for e in events] == ["scene", "run", "upsert", "remove", "clear"]
+    assert events[0]["doc"]["objects"] == []
+    assert events[1] == {"type": "run", "run": "r1", "keep": False}
+    assert events[2]["objects"][0]["id"] == "a"
+
+
+def test_connecting_starts_with_the_full_scene(server):
+    _send(f"{server.url}/api/objects", {"run": "r1", "title": "T", "view": "2d", "objects": [_obj("a"), _obj("b")]})
+    events = []
+    ready = threading.Event()
+    t = threading.Thread(target=_listen, args=(server, 2, events, ready), daemon=True)
+    t.start()
+    assert ready.wait(5)
+    _send(f"{server.url}/api/objects", {"run": "r1", "objects": [_obj("c")]})
+    t.join(5)
+    assert [e["type"] for e in events] == ["scene", "upsert"]
+    assert events[0]["doc"]["version"] == PROTOCOL
+    assert [o["id"] for o in events[0]["doc"]["objects"]] == ["a", "b"]
+    assert (events[0]["doc"]["title"], events[0]["doc"]["view"], events[0]["doc"]["run"]) == ("T", "2d", "r1")
+    assert events[1]["objects"][0]["id"] == "c"
 
 
 def test_static_files_placeholder_and_traversal(tmp_path):
