@@ -239,3 +239,17 @@ def test_offline_clear_is_replayed_after_reconnect(tmp_path):
         assert _ids(second) == ["b"]
     finally:
         second.stop()
+
+
+def test_bad_update_leaves_viewer_usable(server):
+    view = make(server)
+    handle = view.add(Point3D(0, 0), label="a")
+    with pytest.raises(ValueError, match="a: .*NaN"):
+        handle.update(opacity=math.nan)
+    with pytest.raises(TypeError, match="a:"):
+        handle.update(width=object())
+    view.add(Point3D(1, 0), label="b")
+    objs = {o["id"]: o for o in _scene(server)["objects"]}
+    assert list(objs) == ["a", "b"]
+    assert objs["a"]["style"] == {"color": PALETTE[0]}
+    assert view.objects["a"]["style"] == {"color": PALETTE[0]}

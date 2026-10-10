@@ -24,6 +24,16 @@ VIEWS = ("auto", "2d", "3d")
 _default: Viewer | None = None
 
 
+def _check_serializable(obj: dict) -> None:
+    """Reject an object the server could not receive, before any state is changed."""
+    try:
+        json.dumps(obj, allow_nan=False)
+    except ValueError:
+        raise ValueError(f"{obj['id']}: geometry, style or extras have NaN or infinite values") from None
+    except TypeError as err:
+        raise TypeError(f"{obj['id']}: {err}") from None
+
+
 class Handle:
     """One object in the scene, as returned by :meth:`Viewer.add`."""
 
@@ -156,12 +166,7 @@ class Viewer:
             obj["style"] = {"color": previous.get("color") or self._color(), **style}
         if extras:
             obj["extras"] = dict(extras)
-        try:
-            json.dumps(obj, allow_nan=False)
-        except ValueError:
-            raise ValueError(f"{object_id}: geometry, style or extras have NaN or infinite values") from None
-        except TypeError as err:
-            raise TypeError(f"{object_id}: {err}") from None
+        _check_serializable(obj)
         return obj
 
     def _color(self) -> str:
@@ -180,7 +185,10 @@ class Viewer:
             raise TypeError(f"unexpected style keyword(s): {', '.join(sorted(unknown))}")
         if object_id not in self.objects:
             raise KeyError(f"{object_id!r} is no longer in the scene")
-        self.objects[object_id].setdefault("style", {}).update(style)
+        current = self.objects[object_id]
+        updated = {**current, "style": {**current.get("style", {}), **style}}
+        _check_serializable(updated)
+        self.objects[object_id] = updated
         self._unsent.append(object_id)
         self._flush()
 
