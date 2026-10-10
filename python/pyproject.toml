@@ -1,15 +1,20 @@
 [build-system]
-requires = ["setuptools>=61"]
+requires = ["setuptools>=77"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "geomcore-viewer"
-version = "0.1.0"
-description = "Live browser viewer client for geomcore (Babylon.js 3D + PixiJS 2D). Stdlib only."
-readme = "../../README.md"
+version = "0.2.0"
+description = "Live, geometry-aware browser viewer for geomcore: Python client + local server. Stdlib only."
 requires-python = ">=3.9"
 license = "MIT OR Apache-2.0"
+
+[project.scripts]
+geomcore-viewer = "geomcore_viewer.__main__:main"
 
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["geomcore_viewer*"]
+
+[tool.setuptools.package-data]
+geomcore_viewer = ["_frontend/*", "_frontend/**/*"]

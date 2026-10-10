@@ -15,3 +15,6 @@ aside ul { list-style: none; padding: 0; margin: 0; }
 aside li { display: flex; gap: 0.5rem; align-items: center; padding: 0.15rem 0; }
 .swatch { width: 0.8em; height: 0.8em; border-radius: 2px; display: inline-block; }
 .hint { color: #666; font-size: 0.75rem; }
+aside li .type { margin-left: auto; color: #888; font-size: 0.75rem; }
+aside li.note { color: #444; }
+aside li.note.warn, aside li.problem { color: #a4471c; }

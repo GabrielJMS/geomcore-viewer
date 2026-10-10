@@ -1,0 +1,39 @@
+import type { Frame, Vec3 } from "./vec";
+
+export type Range = [number, number];
+
+export interface Window {
+  u?: Range;
+  v?: Range;
+}
+
+export type CurveGeom =
+  | { type: "line"; o: Vec3; d: Vec3; range?: Range }
+  | { type: "circle"; frame: Frame; r: number; range?: Range }
+  | { type: "ellipse"; frame: Frame; a: number; b: number; range?: Range }
+  | { type: "parabola"; frame: Frame; f: number; range?: Range }
+  | { type: "hyperbola"; frame: Frame; a: number; b: number; range?: Range };
+
+export type SurfaceGeom =
+  | { type: "plane"; frame: Frame; window?: Window }
+  | { type: "cylinder"; frame: Frame; r: number; window?: Window }
+  | { type: "cone"; frame: Frame; semi_angle: number; ref_radius: number; window?: Window }
+  | { type: "sphere"; frame: Frame; r: number; window?: Window }
+  | { type: "torus"; frame: Frame; R: number; r: number; window?: Window };
+
+export type MarkerGeom =
+  | { type: "polyline"; points: Vec3[] }
+  | { type: "mesh"; vertices: Vec3[]; indices: number[] }
+  | { type: "point"; p: Vec3 }
+  | { type: "points"; positions: Vec3[]; size?: number }
+  | { type: "arrow"; at: Vec3; vec: Vec3 }
+  | { type: "text"; at: Vec3; text: string }
+  | { type: "note"; text: string; level?: "info" | "warn" };
+
+export type Geom = CurveGeom | SurfaceGeom | MarkerGeom;
+
+export const CURVE_TYPES: ReadonlySet<string> = new Set(["line", "circle", "ellipse", "parabola", "hyperbola"]);
+export const SURFACE_TYPES: ReadonlySet<string> = new Set(["plane", "cylinder", "cone", "sphere", "torus"]);
+
+export const isCurve = (g: Geom): g is CurveGeom => CURVE_TYPES.has(g.type);
+export const isSurface = (g: Geom): g is SurfaceGeom => SURFACE_TYPES.has(g.type);
