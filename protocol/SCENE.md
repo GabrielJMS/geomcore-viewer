@@ -79,8 +79,10 @@ Radii (`r`, `a`, `b`, `R`) must be positive and `f` non-zero.
 - Surfaces carry `window: {"u": [a, b], "v": [a, b]}`. Closed directions
   default to their full period (`cylinder`/`cone` u, `sphere` u and
   v ∈ [-π/2, π/2], `torus` u and v); infinite directions (`plane` u/v,
-  `cylinder`/`cone` v) should always be given — the viewer falls back to
-  ±5 and flags the object.
+  `cylinder`/`cone` v) should always be given. When one is missing the
+  viewer draws it over ±the half-size of the scene's view box (1.5 × the
+  scene's half-extent, at least 1) and does not flag the object. The Python
+  client always fills `window` itself, from the objects already added.
 
 ## Runs
 
@@ -88,7 +90,9 @@ Every client session has a `run` id. When the server receives objects with
 a `run` it has not seen, it empties the scene first (unless `keep: true`)
 and broadcasts a `run` event. The page keeps showing the previous picture
 until the first `upsert` of the new run, then swaps — so re-running a
-script never flashes an empty view, and the camera stays where it was.
+script never flashes an empty view, and a camera you have moved stays where
+you left it (auto-fit follows the scene only until you orbit, pan or zoom;
+the "fit" button or toggling auto-fit hands the camera back).
 
 ## Local server API
 

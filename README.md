@@ -28,8 +28,9 @@ view.add(C.intersect_ellipse(E), label="P")   # → P₁, P₂
   inside one process (`pdb`, IPython, Jupyter) every `gv.add(x)` lands in the
   same scene. Re-adding a label updates that object instead of duplicating it.
 - **Exact.** Objects travel as analytic definitions (frame + radii); the
-  viewer evaluates them with geomcore's own parametrizations, so lines,
-  parabolas and hyperbolas reach the edge of the view.
+  viewer evaluates them with geomcore's own parametrizations. Lines,
+  parabolas and hyperbolas are drawn across 1.5× the scene's extent (exact
+  edge-to-edge clipping comes with the Phase 2 plane view).
 - **Static too.** `view.save("scene.json")`, then open the hosted viewer with
   `?scene=<url>` or drag-drop the file onto it.
 
@@ -55,6 +56,10 @@ from this repo, as in the Development section).
 | `view.clear()`, `view.save(path)`, `view.open()` | housekeeping |
 | `gv.add(...)`, `gv.clear()` | same, on the most recent viewer (handy in `pdb`) |
 | `geomcore-viewer serve` / `geomcore-viewer stop` | run / stop the server by hand |
+
+Default windows for infinite surfaces (planes, cylinders, cones) are computed
+from the objects already added, so add the finite objects first or pass `u=`
+and `v=`.
 
 The server listens on `http://127.0.0.1:8765` by default. If that port is
 busy, set `GEOMCORE_VIEWER_URL=http://127.0.0.1:<other port>` (every script
