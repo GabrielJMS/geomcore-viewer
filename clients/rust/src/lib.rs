@@ -130,13 +130,19 @@ impl Client {
         self.post("/api/clear", "{}")
     }
 
+    /// The server only answers requests whose `Host` names it (with its port).
+    fn request(&self, path: &str, body: &str) -> String {
+        format!(
+            "POST {path} HTTP/1.1\r\nHost: {}:{}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+            self.host,
+            self.port,
+            body.len()
+        )
+    }
+
     fn post(&self, path: &str, body: &str) -> std::io::Result<()> {
         let mut stream = TcpStream::connect((self.host.as_str(), self.port))?;
-        let req = format!(
-            "POST {path} HTTP/1.1\r\nHost: {}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
-            self.host,
-            body.len()
-        );
+        let req = self.request(path, body);
         stream.write_all(req.as_bytes())?;
         let mut head = [0u8; 12];
         stream.read_exact(&mut head)?;
@@ -150,6 +156,14 @@ impl Client {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn request_names_host_and_port_and_sends_json() {
+        let req = Client::new("127.0.0.1", 8799).request("/api/clear", "{}");
+        assert!(req.starts_with("POST /api/clear HTTP/1.1\r\nHost: 127.0.0.1:8799\r\n"));
+        assert!(req.contains("Content-Type: application/json\r\n"));
+        assert!(req.ends_with("\r\n\r\n{}"));
+    }
 
     #[test]
     fn wire_format_matches_protocol() {

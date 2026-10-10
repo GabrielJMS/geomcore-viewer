@@ -102,7 +102,8 @@ def ensure_server(url: str, timeout: float = 5.0) -> bool:
 
 def stop_server(url: str) -> bool:
     """Ask the server at ``url`` to shut down; False when nothing answered."""
-    req = urllib.request.Request(f"{url}/api/shutdown", data=b"{}", method="POST")
+    req = urllib.request.Request(f"{url}/api/shutdown", data=b"{}", method="POST",
+                                 headers={"Content-Type": "application/json"})
     try:
         with urllib.request.urlopen(req, timeout=2):
             pass

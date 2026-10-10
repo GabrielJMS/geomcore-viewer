@@ -19,7 +19,7 @@ byId("fit").addEventListener("click", () => {
   view3d.fit();
   view2d.fitRequested();
 });
-byId("clear").addEventListener("click", () => store.clearAll());
+byId("clear").addEventListener("click", () => void store.clearAll());
 
 // Drag-and-drop a scene .json file anywhere on the page.
 window.addEventListener("dragover", (e) => e.preventDefault());

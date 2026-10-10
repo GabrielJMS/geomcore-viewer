@@ -144,18 +144,34 @@ def make_handler(frontend_dir: Path, state: _State) -> type[BaseHTTPRequestHandl
             self.send_response(status)
             self.send_header("Content-Type", content_type)
             self.send_header("Content-Length", str(len(body)))
-            self.send_header("Access-Control-Allow-Origin", "*")
             self.end_headers()
             self.wfile.write(body)
 
         def _send_json(self, obj: object, status: int = 200) -> None:
             self._send_bytes(json.dumps(obj).encode(), "application/json", status)
 
+        def _local_request(self) -> bool:
+            """Only this server's own page (or a same-host script) may talk to it.
+
+            Any website can make the browser send requests to 127.0.0.1, so the
+            ``Host`` (DNS rebinding) and ``Origin`` (cross-site fetch) headers
+            must name this server. Answers 403 itself when they do not.
+            """
+            port = self.server.server_address[1]
+            hosts = {f"127.0.0.1:{port}", f"localhost:{port}"}
+            origin = self.headers.get("Origin")
+            if self.headers.get("Host") in hosts and (origin is None or origin in {f"http://{h}" for h in hosts}):
+                return True
+            self._send_json({"error": "request is not from this server's own origin"}, 403)
+            return False
+
         def _read_json(self) -> object:
             length = int(self.headers.get("Content-Length", 0))
             return json.loads(self.rfile.read(length) if length else b"{}")
 
         def do_GET(self) -> None:
+            if not self._local_request():
+                return
             path = urlparse(self.path).path
             if path == "/api/health":
                 self._send_json({"app": APP, "protocol": PROTOCOL})
@@ -170,7 +186,6 @@ def make_handler(frontend_dir: Path, state: _State) -> type[BaseHTTPRequestHandl
             self.send_response(200)
             self.send_header("Content-Type", "text/event-stream")
             self.send_header("Cache-Control", "no-cache")
-            self.send_header("Access-Control-Allow-Origin", "*")
             self.end_headers()
             sub = state.subscribe()
             try:
@@ -202,6 +217,13 @@ def make_handler(frontend_dir: Path, state: _State) -> type[BaseHTTPRequestHandl
             self._send_bytes(target.read_bytes(), _MIME.get(target.suffix, "application/octet-stream"))
 
         def do_POST(self) -> None:
+            if not self._local_request():
+                return
+            # A cross-site page can only send simple content types without a
+            # preflight (which this server never answers): insist on JSON.
+            if self.headers.get_content_type() != "application/json":
+                self._send_json({"error": "Content-Type must be application/json"}, 415)
+                return
             path = urlparse(self.path).path
             try:
                 body = self._read_json()
@@ -231,6 +253,8 @@ def make_handler(frontend_dir: Path, state: _State) -> type[BaseHTTPRequestHandl
             self._send_json({"ok": True})
 
         def do_DELETE(self) -> None:
+            if not self._local_request():
+                return
             path = urlparse(self.path).path
             prefix = "/api/objects/"
             if not path.startswith(prefix):

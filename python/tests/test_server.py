@@ -152,3 +152,90 @@ def test_shutdown_stops_server(tmp_path):
     srv._thread.join(timeout=5)
     assert not srv._thread.is_alive()
     srv.stop()
+
+
+def _raw(server, method, path, body=None, headers=None, host=None):
+    """One request with exactly the given headers (no implicit Content-Type)."""
+    conn = http.client.HTTPConnection("127.0.0.1", server.port, timeout=5)
+    conn.putrequest(method, path, skip_host=True, skip_accept_encoding=True)
+    conn.putheader("Host", host if host is not None else f"127.0.0.1:{server.port}")
+    for key, value in (headers or {}).items():
+        conn.putheader(key, value)
+    data = body.encode() if isinstance(body, str) else body
+    if data is not None:
+        conn.putheader("Content-Length", str(len(data)))
+    conn.endheaders(data)
+    res = conn.getresponse()
+    out = res.status, dict(res.getheaders()), res.read()
+    conn.close()
+    return out
+
+
+def test_post_requires_json_content_type(server):
+    body = json.dumps({"objects": [_obj("evil")]})
+    status, _, payload = _raw(server, "POST", "/api/objects", body, {"Content-Type": "text/plain"})
+    assert status == 415
+    assert json.loads(payload) == {"error": "Content-Type must be application/json"}
+    assert _ids(server) == []
+    assert _raw(server, "POST", "/api/objects", body)[0] == 415  # no Content-Type at all
+
+
+def test_clear_and_shutdown_need_json_content_type_too(server):
+    _send(f"{server.url}/api/objects", {"objects": [_obj("a")]})
+    assert _raw(server, "POST", "/api/clear")[0] == 415
+    assert _raw(server, "POST", "/api/clear", "{}", {"Content-Type": "text/plain"})[0] == 415
+    assert _raw(server, "POST", "/api/shutdown", "{}", {"Content-Type": "text/plain"})[0] == 415
+    assert _ids(server) == ["a"]
+    assert server._thread.is_alive()
+
+
+def test_json_content_type_with_charset_is_accepted(server):
+    body = json.dumps({"objects": [_obj("a")]})
+    status, _, _ = _raw(server, "POST", "/api/objects", body, {"Content-Type": "Application/JSON; charset=utf-8"})
+    assert status == 200 and _ids(server) == ["a"]
+
+
+@pytest.mark.parametrize("origin", ["http://evil.example", "https://127.0.0.1:{port}", "http://127.0.0.1:1", "null"])
+def test_foreign_origin_is_refused_on_every_method(server, origin):
+    origin = origin.format(port=server.port)
+    headers = {"Content-Type": "application/json", "Origin": origin}
+    assert _raw(server, "POST", "/api/objects", json.dumps({"objects": [_obj("evil")]}), headers)[0] == 403
+    assert _raw(server, "POST", "/api/clear", "{}", headers)[0] == 403
+    assert _raw(server, "DELETE", "/api/objects/a", None, headers)[0] == 403
+    assert _raw(server, "GET", "/api/scene", None, {"Origin": origin})[0] == 403
+    assert _raw(server, "GET", "/events", None, {"Origin": origin})[0] == 403
+    assert _raw(server, "GET", "/", None, {"Origin": origin})[0] == 403
+    assert _ids(server) == []
+
+
+@pytest.mark.parametrize("name", ["127.0.0.1", "localhost"])
+def test_local_origin_is_accepted(server, name):
+    origin = f"http://{name}:{server.port}"
+    status, _, _ = _raw(server, "POST", "/api/objects", json.dumps({"objects": [_obj("a")]}),
+                        {"Content-Type": "application/json", "Origin": origin})
+    assert status == 200
+    assert _raw(server, "GET", "/api/scene", None, {"Origin": origin})[0] == 200
+
+
+@pytest.mark.parametrize("host", ["evil.example", "evil.example:{port}", "127.0.0.1", "localhost", "127.0.0.1:1", ""])
+def test_foreign_host_is_refused_on_every_route(server, host):
+    host = host.format(port=server.port)
+    assert _raw(server, "GET", "/api/health", host=host)[0] == 403
+    assert _raw(server, "GET", "/api/scene", host=host)[0] == 403
+    assert _raw(server, "GET", "/", host=host)[0] == 403
+    assert _raw(server, "GET", "/events", host=host)[0] == 403
+    assert _raw(server, "POST", "/api/clear", "{}", {"Content-Type": "application/json"}, host=host)[0] == 403
+
+
+def test_localhost_host_is_accepted(server):
+    assert _raw(server, "GET", "/api/health", host=f"localhost:{server.port}")[0] == 200
+
+
+def test_no_cross_origin_read_header(server):
+    for path in ("/api/scene", "/api/health", "/"):
+        _, headers, _ = _raw(server, "GET", path)
+        assert "Access-Control-Allow-Origin" not in headers
+    _, headers, _ = _raw(server, "POST", "/api/clear", "{}", {"Content-Type": "application/json"})
+    assert "Access-Control-Allow-Origin" not in headers
+    with urllib.request.urlopen(f"{server.url}/events", timeout=5) as res:
+        assert res.headers.get("Access-Control-Allow-Origin") is None

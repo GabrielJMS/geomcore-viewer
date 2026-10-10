@@ -103,6 +103,16 @@ script never flashes an empty view, and the camera stays where it was.
 | `POST` | `/api/add` | one v1 entity | v1 clients (kept until the Rust client speaks v2) |
 | `GET` | `/events` | — | SSE: `run`, `upsert`, `remove`, `clear` |
 
+Every `POST` must send `Content-Type: application/json` (anything else
+gets `415`). Any website can make a browser call `127.0.0.1`, so the server
+only answers requests from itself: the `Host` header must be
+`127.0.0.1:<port>` or `localhost:<port>`, and an `Origin` header, when
+present, must be `http://127.0.0.1:<port>` or `http://localhost:<port>`;
+otherwise `403`. It sends no CORS headers and answers no preflight, so other
+origins can neither read nor write. Non-browser clients (Python, Rust, curl)
+send no `Origin`; they just need the JSON content type and a `Host` with the
+port.
+
 The server binds `127.0.0.1`, is stdlib-only, and validates shape only
 (`id` string, `geom.type` string); geometric validity is checked by the
 viewer, which lists rejected objects in its panel.

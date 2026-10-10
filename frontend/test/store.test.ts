@@ -164,3 +164,37 @@ describe("Store.load", () => {
     expect(store.status).toBe("static: sample-scene.json");
   });
 });
+
+describe("Store.clearAll", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("posts a JSON body with a JSON content type and clears the page", async () => {
+    const fetchMock = vi.fn(async () => Response.json({ ok: true }));
+    vi.stubGlobal("fetch", fetchMock);
+    const { store } = storeWith("a");
+    await store.clearAll();
+    expect(fetchMock).toHaveBeenCalledWith("api/clear", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: "{}",
+    });
+    expect(ids(store)).toEqual([]);
+  });
+
+  it("reports a refused clear instead of swallowing it", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => new Response("no", { status: 415 })));
+    const { store } = storeWith("a");
+    await store.clearAll();
+    expect(store.status).toBe("clear failed: the server answered HTTP 415");
+  });
+
+  it("stays quiet on a static page, where there is no server scene to clear", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => new Response("", { status: 404 })));
+    const { store } = storeWith("a");
+    await store.clearAll();
+    expect(store.status).toBe("");
+    vi.stubGlobal("fetch", vi.fn(async () => Promise.reject(new TypeError("offline"))));
+    await store.clearAll();
+    expect(store.status).toBe("");
+  });
+});

@@ -215,10 +215,18 @@ export class Store {
   }
 
   /** The "clear" button: empty the page and, when live, the server's scene. */
-  clearAll(): void {
-    fetch("api/clear", { method: "POST" }).catch(() => {
-      /* static page: there is no server scene to clear */
-    });
+  async clearAll(): Promise<void> {
     this.apply({ type: "clear" });
+    try {
+      const res = await fetch("api/clear", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: "{}",
+      });
+      // 404: a static page, there is no server scene to clear
+      if (!res.ok && res.status !== 404) this.setStatus(`clear failed: the server answered HTTP ${res.status}`);
+    } catch {
+      /* no server reachable: nothing to clear there */
+    }
   }
 }
