@@ -5,19 +5,20 @@ from __future__ import annotations
 import argparse
 import webbrowser
 
-from .server import DEFAULT_PORT, Server
+from .server import Server, default_port
 from .spawn import stop_server
 
 
 def main(argv: list[str] | None = None) -> None:
+    port_help = "default: the port of $GEOMCORE_VIEWER_URL, else 8765"
     parser = argparse.ArgumentParser(prog="geomcore-viewer")
     commands = parser.add_subparsers(dest="command", required=True)
     serve = commands.add_parser("serve", help="serve the viewer in the foreground")
     serve.add_argument("--dir", default=None, help="frontend directory (default: the bundled build)")
-    serve.add_argument("--port", type=int, default=DEFAULT_PORT)
+    serve.add_argument("--port", type=int, default=default_port(), help=port_help)
     serve.add_argument("--no-browser", action="store_true")
     stop = commands.add_parser("stop", help="stop a running viewer server")
-    stop.add_argument("--port", type=int, default=DEFAULT_PORT)
+    stop.add_argument("--port", type=int, default=default_port(), help=port_help)
     args = parser.parse_args(argv)
 
     if args.command == "serve":

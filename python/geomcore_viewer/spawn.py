@@ -16,7 +16,7 @@ from urllib.parse import urlparse
 
 from .server import APP, PROTOCOL
 
-_children: list[subprocess.Popen] = []  # keep handles so they aren't reported as leaked
+_children: dict[int, subprocess.Popen] = {}  # servers this process started, by port; reaped in stop_server
 
 
 def _timed_out(err: OSError) -> bool:
@@ -54,7 +54,10 @@ def _spawn(port: int) -> subprocess.Popen:
         [sys.executable, "-m", "geomcore_viewer", "serve", "--port", str(port), "--no-browser"],
         stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, env=env, **detach,
     )
-    _children.append(proc)
+    stale = _children.get(port)
+    if stale is not None:
+        stale.poll()  # a server that exited on its own: reap before dropping the handle
+    _children[port] = proc
     return proc
 
 
@@ -88,6 +91,7 @@ def ensure_server(url: str, timeout: float = 5.0) -> bool:
         if probe(url) == "ours":
             return True
         if proc.poll() is not None:
+            _children.pop(port, None)
             raise RuntimeError(
                 f"the viewer server exited with code {proc.returncode}; "
                 f"run `python -m geomcore_viewer serve --port {port}` to see why"
@@ -101,6 +105,14 @@ def stop_server(url: str) -> bool:
     req = urllib.request.Request(f"{url}/api/shutdown", data=b"{}", method="POST")
     try:
         with urllib.request.urlopen(req, timeout=2):
-            return True
+            pass
     except OSError:
         return False
+    port = urlparse(url).port or 80
+    child = _children.pop(port, None)
+    if child is not None:
+        try:
+            child.wait(timeout=2)  # reap it so it does not linger as a zombie
+        except subprocess.TimeoutExpired:
+            _children[port] = child
+    return True

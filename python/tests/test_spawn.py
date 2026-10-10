@@ -5,7 +5,9 @@ from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 
 import pytest
 
+from geomcore_viewer import spawn
 from geomcore_viewer.__main__ import main
+from geomcore_viewer.server import DEFAULT_PORT, Server
 from geomcore_viewer.spawn import ensure_server, probe, stop_server
 
 
@@ -28,6 +30,7 @@ def test_ensure_server_spawns_reuses_and_stops():
     while probe(url) != "none" and time.monotonic() < deadline:
         time.sleep(0.05)
     assert probe(url) == "none"
+    assert spawn._children == {}  # the exited server process was reaped, not left as a zombie
 
 
 def test_foreign_listener_is_reported(tmp_path):
@@ -99,3 +102,61 @@ def test_hung_listener_is_unresponsive():
     finally:
         release.set()
         srv.close()
+
+
+def test_cli_stop_defaults_to_the_port_of_the_environment_url(monkeypatch, tmp_path, capsys):
+    srv = Server(tmp_path, port=0).start()
+    try:
+        monkeypatch.setenv("GEOMCORE_VIEWER_URL", srv.url)
+        main(["stop"])
+        assert f"stopped {srv.url}" in capsys.readouterr().out
+    finally:
+        srv.stop()
+
+
+def test_cli_explicit_port_beats_the_environment_url(monkeypatch, tmp_path, capsys):
+    srv = Server(tmp_path, port=0).start()
+    try:
+        monkeypatch.setenv("GEOMCORE_VIEWER_URL", srv.url)
+        free = _free_port()
+        main(["stop", "--port", str(free)])
+        assert f"no viewer running at http://127.0.0.1:{free}" in capsys.readouterr().out
+        assert probe(srv.url) == "ours"
+    finally:
+        srv.stop()
+
+
+class _FakeServer:
+    ports: list = []
+
+    def __init__(self, directory, port):
+        self.ports.append(port)
+        self.url = f"http://127.0.0.1:{port}"
+        self.httpd = self
+
+    def serve_forever(self):
+        raise KeyboardInterrupt
+
+    def server_close(self):
+        pass
+
+
+@pytest.mark.parametrize(
+    ("env", "argv", "expected"),
+    [
+        ("http://127.0.0.1:8799", [], 8799),
+        ("http://127.0.0.1:8799", ["--port", "8123"], 8123),
+        (None, [], DEFAULT_PORT),
+        ("  ", [], DEFAULT_PORT),
+        ("http://127.0.0.1", [], DEFAULT_PORT),
+    ],
+)
+def test_cli_serve_port_default(monkeypatch, env, argv, expected):
+    monkeypatch.setattr("geomcore_viewer.__main__.Server", _FakeServer)
+    _FakeServer.ports = []
+    if env is None:
+        monkeypatch.delenv("GEOMCORE_VIEWER_URL", raising=False)
+    else:
+        monkeypatch.setenv("GEOMCORE_VIEWER_URL", env)
+    main(["serve", "--no-browser", *argv])
+    assert _FakeServer.ports == [expected]

@@ -34,7 +34,7 @@ jobs:
         working-directory: frontend
       - run: scripts/bundle-frontend.sh
       - run: pip install build && python -m build python/
-      - run: unzip -l python/dist/*.whl | grep -q 'geomcore_viewer/_frontend/index.html'
+      - run: unzip -Z1 python/dist/*.whl | grep -x 'geomcore_viewer/_frontend/index.html'
   rust:
     runs-on: ubuntu-latest
     steps:

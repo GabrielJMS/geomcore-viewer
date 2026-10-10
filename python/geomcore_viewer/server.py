@@ -7,6 +7,7 @@ a scene document instead — see protocol/SCENE.md (v2).
 from __future__ import annotations
 
 import json
+import os
 import queue
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -16,7 +17,18 @@ from urllib.parse import unquote, urlparse
 APP = "geomcore-viewer"
 PROTOCOL = 2
 DEFAULT_PORT = 8765
+URL_ENV = "GEOMCORE_VIEWER_URL"  # overrides the default server URL (and the CLI's default port)
 _KEEPALIVE_S = 15.0
+
+
+def default_url() -> str:
+    """``$GEOMCORE_VIEWER_URL`` when set and not blank, else the local default."""
+    return (os.environ.get(URL_ENV, "").strip() or f"http://127.0.0.1:{DEFAULT_PORT}").rstrip("/")
+
+
+def default_port() -> int:
+    """The port of :func:`default_url`, or ``DEFAULT_PORT`` when the URL names none."""
+    return urlparse(default_url()).port or DEFAULT_PORT
 
 _MIME = {
     ".html": "text/html",

@@ -268,7 +268,7 @@ def test_explicit_url_overrides_the_environment_variable(monkeypatch):
     assert view.url == "http://127.0.0.1:8123"
 
 
-@pytest.mark.parametrize("value", [None, ""])
+@pytest.mark.parametrize("value", [None, "", "   "])
 def test_unset_or_empty_environment_variable_falls_back_to_the_default(monkeypatch, value):
     if value is None:
         monkeypatch.delenv("GEOMCORE_VIEWER_URL", raising=False)
