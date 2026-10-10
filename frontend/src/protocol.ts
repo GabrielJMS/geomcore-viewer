@@ -12,6 +12,8 @@ export interface Entity {
   /** surface */
   vertices?: number[][];
   indices?: number[];
+  /** surface opacity in (0, 1]; default 1 (opaque) */
+  opacity?: number;
   /** points3d / points2d */
   positions?: number[][];
   size?: number;

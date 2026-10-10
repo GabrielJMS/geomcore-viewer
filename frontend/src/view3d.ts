@@ -94,6 +94,9 @@ export class View3D {
       mat.diffuseColor = cssToColor3(e.color, new BABYLON.Color3(0.3, 0.6, 1));
       mat.specularColor = new BABYLON.Color3(0.2, 0.2, 0.2);
       mat.backFaceCulling = false;
+      if (e.opacity !== undefined && e.opacity < 1) {
+        mat.alpha = Math.min(Math.max(e.opacity, 0), 1);
+      }
       mesh.material = mat;
       this.replace(e.id, mesh);
     } else if (e.kind === "points3d" && e.positions && e.positions.length > 0) {

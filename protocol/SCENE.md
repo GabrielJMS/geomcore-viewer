@@ -28,7 +28,8 @@ either a file (`scene.json`) or the local server API below.
 | `points2d` | — | PixiJS points | `positions: [u,v][]`, optional `size` |
 
 Common optional fields: `id` (string, stable across updates — resending an
-existing `id` replaces the entity), `name`, `color` (CSS color string).
+existing `id` replaces the entity), `name`, `color` (CSS color string),
+`opacity` (surface only, 0–1, default 1).
 
 ### Rules
 

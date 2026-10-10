@@ -73,6 +73,10 @@ def make_handler(frontend_dir: Path, state: _State) -> type[BaseHTTPRequestHandl
             if path == "/api/scene":
                 self._send_json(state.snapshot())
                 return
+            # The bundled frontend is built with the Pages base
+            # (vite `base: "/geomcore-viewer/"`); strip it for local serving.
+            if path == "/geomcore-viewer" or path.startswith("/geomcore-viewer/"):
+                path = path[len("/geomcore-viewer") :] or "/"
             if path == "/events":
                 self.send_response(200)
                 self.send_header("Content-Type", "text/event-stream")

@@ -40,11 +40,12 @@ class Viewer:
     def add_curve2d(self, id: str, points, color: str = "#ff5533", name: str = "") -> dict:
         return self._upsert({"id": id, "kind": "curve2d", "points": list(points), "color": color, "name": name or id})
 
-    def add_surface(self, id: str, vertices, indices, color: str = "#4d94ff", name: str = "") -> dict:
-        return self._upsert(
-            {"id": id, "kind": "surface", "vertices": list(vertices), "indices": list(indices),
+    def add_surface(self, id: str, vertices, indices, color: str = "#4d94ff", name: str = "", opacity: float = 1.0) -> dict:
+        entity = {"id": id, "kind": "surface", "vertices": list(vertices), "indices": list(indices),
              "color": color, "name": name or id}
-        )
+        if opacity != 1.0:
+            entity["opacity"] = opacity
+        return self._upsert(entity)
 
     def add_points3d(self, id: str, positions, color: str = "#333333", size: int = 2, name: str = "") -> dict:
         return self._upsert(
