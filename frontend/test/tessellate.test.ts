@@ -54,6 +54,15 @@ describe("bounds", () => {
     expect(sceneBounds([{ type: "note", text: "x" }])).toBeNull();
   });
 
+  it("includes the drawn extent of explicitly ranged infinite curves", () => {
+    expect(sceneBounds([{ type: "line", o: [0, 0, 0], d: [1, 0, 0], range: [0, 100] }])).toEqual({
+      min: [0, 0, 0],
+      max: [100, 0, 0],
+    });
+    const parabola: Geom = { type: "parabola", frame: world, f: 0.25, range: [-2, 2] };
+    expect(sceneBounds([parabola])).toEqual({ min: [0, -2, 0], max: [4, 2, 0] });
+  });
+
   it("grows the scene box ×1.5 into a cube, or falls back to ±5", () => {
     expect(viewBox([])).toEqual({ min: [-5, -5, -5], max: [5, 5, 5] });
     const box = viewBox([{ type: "point", p: [0, 0, 0] }, { type: "point", p: [2, 0, 0] }]);

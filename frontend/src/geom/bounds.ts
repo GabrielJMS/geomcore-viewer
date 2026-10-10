@@ -1,5 +1,6 @@
+import { evalCurve } from "./curves";
 import { evalSurface, surfaceWindow } from "./surfaces";
-import { Geom, isSurface } from "./types";
+import { Geom, Range, CurveGeom, isSurface } from "./types";
 import { Box, Vec3, add } from "./vec";
 
 const FALLBACK: Box = { min: [-5, -5, -5], max: [5, 5, 5] };
@@ -19,6 +20,12 @@ export function sceneBounds(geoms: Iterable<Geom>): Box | null {
       max[i] = Math.max(max[i], p[i] + pad);
     }
   };
+  /** Explicit ranges make infinite curves finite; include their ends and, for conics, the vertex. */
+  const growRange = (g: CurveGeom, [t0, t1]: Range) => {
+    grow(evalCurve(g, t0));
+    grow(evalCurve(g, t1));
+    if (t0 <= 0 && 0 <= t1) grow(evalCurve(g, 0)); // vertex (a line's origin is already in)
+  };
   for (const g of geoms) {
     switch (g.type) {
       case "point": grow(g.p); break;
@@ -27,8 +34,14 @@ export function sceneBounds(geoms: Iterable<Geom>): Box | null {
       case "mesh": g.vertices.forEach((p) => grow(p)); break;
       case "arrow": grow(g.at); grow(add(g.at, g.vec)); break;
       case "text": grow(g.at); break;
-      case "line": grow(g.o); break;
-      case "parabola": case "hyperbola": grow(g.frame.o); break;
+      case "line":
+        grow(g.o);
+        if (g.range) growRange(g, g.range);
+        break;
+      case "parabola": case "hyperbola":
+        grow(g.frame.o);
+        if (g.range) growRange(g, g.range);
+        break;
       case "circle": grow(g.frame.o, g.r); break;
       case "ellipse": grow(g.frame.o, Math.max(g.a, g.b)); break;
       case "note": break;
