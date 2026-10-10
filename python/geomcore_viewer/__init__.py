@@ -1,7 +1,17 @@
-"""geomcore-viewer Python client: live browser viewer for geomcore geometry."""
+"""geomcore-viewer: a live, geometry-aware browser viewer for geomcore."""
 
 from .sampling import sample_curve, sample_surface_grid
 from .server import Server
-from .viewer import Viewer
+from .viewer import PALETTE, Handle, Viewer, add, clear, viewer
 
-__all__ = ["Server", "Viewer", "sample_curve", "sample_surface_grid"]
+__all__ = [
+    "PALETTE",
+    "Handle",
+    "Server",
+    "Viewer",
+    "add",
+    "clear",
+    "sample_curve",
+    "sample_surface_grid",
+    "viewer",
+]
