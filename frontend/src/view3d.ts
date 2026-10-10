@@ -13,14 +13,6 @@ const v3 = (p: Vec3) => new BABYLON.Vector3(p[0], p[1], p[2]);
 const WHEEL_FEEL = 30;
 const PAN_FEEL = 10000;
 
-function color3(css: string): BABYLON.Color3 {
-  try {
-    return BABYLON.Color3.FromHexString(css.startsWith("#") ? css : `#${css}`);
-  } catch {
-    return BABYLON.Color3.FromHexString("#30638e");
-  }
-}
-
 /** Babylon 3D pane, z up and right-handed like geomcore. Phase 1: thin lines, plain markers. */
 export class View3D {
   readonly scene: BABYLON.Scene;
@@ -102,7 +94,7 @@ export class View3D {
 
   private build(o: SceneObject): BABYLON.AbstractMesh[] {
     const g = o.geom;
-    const color = color3(colorOf(o));
+    const color = BABYLON.Color3.FromHexString(colorOf(o));
     if (isCurve(g)) return this.lines(o.id, [tessellateCurve(g, this.box)], color);
     if (g.type === "polyline") return this.lines(o.id, [g.points], color);
     if (g.type === "arrow") return this.lines(o.id, arrowPolylines(g.at, g.vec), color);

@@ -8,12 +8,6 @@ import type { SceneObject } from "./protocol";
 import type { Store, StoreEvent } from "./store";
 import { colorOf } from "./ui/colors";
 
-const hex = (css: string): number => {
-  const m = css.replace("#", "");
-  const v = parseInt(m.length === 3 ? m.split("").map((c) => c + c).join("") : m, 16);
-  return Number.isNaN(v) ? 0x30638e : v;
-};
-
 /** PixiJS pane for everything lying in z = 0, y up. Phase 2 replaces it with the full plane view. */
 export class View2D {
   private app = new PIXI.Application();
@@ -142,7 +136,7 @@ export class View2D {
     this.drop(o.id);
     const g = o.geom;
     if (!inPlaneZ0(g)) return;
-    const color = hex(colorOf(o));
+    const color = colorOf(o);
     const px = 1 / Math.max(Math.abs(this.world.scale.x), 1e-9); // one screen pixel in world units
     const gfx = new PIXI.Graphics();
     const stroke = (polylines: Vec3[][]) => {
