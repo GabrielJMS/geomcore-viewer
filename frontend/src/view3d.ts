@@ -38,7 +38,10 @@ export class View3D {
     this.camera.attachControl(canvas, true);
     new BABYLON.HemisphericLight("light", new BABYLON.Vector3(0.3, 0.5, 1), this.scene);
     store.onChange((ev) => this.onStore(ev));
-    window.addEventListener("resize", () => engine.resize());
+    window.addEventListener("resize", () => {
+      engine.resize();
+      if (this.autoFit()) this.fit();
+    });
     engine.runRenderLoop(() => this.scene.render());
     this.rebuild();
     this.fit();
@@ -69,7 +72,9 @@ export class View3D {
     if (!b) return;
     const center = v3(b.min).add(v3(b.max)).scale(0.5);
     this.camera.target.copyFrom(center);
-    const radius = Math.max(v3(b.max).subtract(v3(b.min)).length() / 2, 1e-6) * 3;
+    // The camera's field of view is vertical: in a pane narrower than tall, back off so the width fits too.
+    const aspect = this.scene.getEngine().getAspectRatio(this.camera);
+    const radius = (Math.max(v3(b.max).subtract(v3(b.min)).length() / 2, 1e-6) * 3) / Math.min(1, aspect || 1);
     this.camera.radius = radius;
     // The default clip planes (1 .. 10000) would hide scenes much smaller or larger than ~10 units.
     this.camera.minZ = radius / 1000;
