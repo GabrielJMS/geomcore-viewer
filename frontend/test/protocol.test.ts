@@ -19,6 +19,8 @@ describe("parseObject", () => {
     [{ id: "a", geom: { type: "line", o: [0, 0, 0], d: [1, 0, 0], range: [1] } }, "a", "line.range must be [t0, t1]"],
     [{ id: "a", geom: { type: "point", p: [0, NaN, 0] } }, "a", "point.p is missing or malformed"],
     [{ id: "a", geom: { type: "line", o: [0, 0, 0], d: [0, 0, 0] } }, "a", "line.d must be non-zero"],
+    [{ id: "a", geom: { type: "plane", frame, window: { u: [1] } } }, "a", "plane.window must be {u?: [a, b], v?: [a, b]}"],
+    [{ id: "a", geom: { type: "constructor" } }, "a", 'unknown type "constructor"'],
   ])("rejects %j", (raw, id, message) => {
     expect(parseObject(raw)).toEqual({ problem: { id, message } });
   });

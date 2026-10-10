@@ -8,6 +8,8 @@ export type StoreEvent =
 
 export type StoreHandler = (ev: StoreEvent) => void;
 
+type LiveScene = { kind: "none" } | { kind: "error"; message: string } | { kind: "doc"; raw: unknown };
+
 const EMPTY: SceneDoc = { version: 2, title: "", run: null, view: "auto", objects: [] };
 const VIEWS: ReadonlySet<string> = new Set(["auto", "2d", "3d"]);
 
@@ -69,8 +71,13 @@ export class Store {
           this.objects.set(o.id, o);
           this.problems.delete(o.id);
         }
-        for (const p of problems) this.problems.set(p.id, p);
-        this.emit(swap ? { type: "reset" } : { type: "upsert", objects });
+        // an invalid replacement must not leave the stale object on screen
+        let dropped = false;
+        for (const p of problems) {
+          dropped = this.objects.delete(p.id) || dropped;
+          this.problems.set(p.id, p);
+        }
+        this.emit(swap || dropped ? { type: "reset" } : { type: "upsert", objects });
         return;
       }
       case "remove":
@@ -136,22 +143,34 @@ export class Store {
   async load(): Promise<void> {
     const sceneUrl = new URLSearchParams(location.search).get("scene");
     if (sceneUrl) return this.loadUrl(sceneUrl);
-    if (await this.connectLive()) return;
+    if ((await this.connectLive()) !== "none") return;
     await this.loadUrl("sample-scene.json");
   }
 
-  private async fetchLiveScene(): Promise<unknown | null> {
+  private async fetchLiveScene(): Promise<LiveScene> {
+    let res: Response;
     try {
-      const res = await fetch("api/scene");
-      return res.ok ? await res.json() : null;
+      res = await fetch("api/scene");
     } catch {
-      return null; // static hosting: no API (404 page or not JSON)
+      return { kind: "none" }; // no server reachable
+    }
+    if (res.status === 404) return { kind: "none" };
+    if (!res.ok) return { kind: "error", message: `live server error (HTTP ${res.status})` };
+    try {
+      return { kind: "doc", raw: await res.json() };
+    } catch {
+      return { kind: "none" }; // static host: SPA fallback page, not JSON
     }
   }
 
-  private async connectLive(): Promise<boolean> {
-    const raw = await this.fetchLiveScene();
-    if (raw === null || !this.loadJson(raw, "live")) return false;
+  private async connectLive(): Promise<"none" | "live" | "failed"> {
+    const scene = await this.fetchLiveScene();
+    if (scene.kind === "none") return "none";
+    if (scene.kind === "error") {
+      this.fail(scene.message);
+      return "failed";
+    }
+    if (!this.loadJson(scene.raw, "live")) return "failed";
     this.setStatus("live");
     const events = new EventSource("events");
     let dropped = false;
@@ -172,12 +191,15 @@ export class Store {
     events.onopen = () => {
       if (!dropped) return;
       dropped = false; // server restarted: our copy may be stale
-      void this.fetchLiveScene().then((fresh) => {
-        if (fresh !== null) this.loadJson(fresh, "live");
-        this.setStatus("live");
-      });
+      const couldNotReload = () => this.setStatus("live · could not reload scene");
+      void this.fetchLiveScene()
+        .then((fresh) => {
+          if (fresh.kind !== "doc") return couldNotReload();
+          if (this.loadJson(fresh.raw, "live")) this.setStatus("live");
+        })
+        .catch(couldNotReload);
     };
-    return true;
+    return "live";
   }
 
   /** The "clear" button: empty the page and, when live, the server's scene. */

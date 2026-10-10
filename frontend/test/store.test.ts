@@ -78,3 +78,61 @@ describe("Store.loadUrl", () => {
     expect(store.problems.get("_doc")?.message).toMatch(/unsupported scene version 9/);
   });
 });
+
+describe("Store.apply replacement", () => {
+  it("drops the stale object when its replacement is invalid", () => {
+    const { store, events } = storeWith("a");
+    store.apply({ type: "upsert", objects: [{ id: "a", geom: { type: "foo" } }] });
+    expect(store.objects.has("a")).toBe(false);
+    expect(store.problems.has("a")).toBe(true);
+    expect(events).toEqual(["reset"]);
+  });
+});
+
+describe("Store.load", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  class NoopEventSource {
+    onmessage = null;
+    onerror = null;
+    onopen = null;
+  }
+
+  function stub(routes: Record<string, () => Response>) {
+    const fetchMock = vi.fn(async (url: string) => {
+      const route = routes[url];
+      if (!route) throw new Error(`unexpected fetch ${url}`);
+      return route();
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    vi.stubGlobal("location", { search: "" });
+    vi.stubGlobal("EventSource", NoopEventSource);
+    return fetchMock;
+  }
+
+  it("stops on a failing live server instead of loading the sample", async () => {
+    const fetchMock = stub({ "api/scene": () => new Response("boom", { status: 500 }) });
+    const store = new Store();
+    await store.load();
+    expect(store.status).toContain("HTTP 500");
+    expect(fetchMock).not.toHaveBeenCalledWith("sample-scene.json");
+  });
+
+  it("stops on a live scene with an unsupported version", async () => {
+    const fetchMock = stub({ "api/scene": () => Response.json({ version: 9, objects: [] }) });
+    const store = new Store();
+    await store.load();
+    expect(store.status).toContain("unsupported scene version 9");
+    expect(fetchMock).not.toHaveBeenCalledWith("sample-scene.json");
+  });
+
+  it("falls back to the sample when there is no server", async () => {
+    stub({
+      "api/scene": () => new Response("not found", { status: 404 }),
+      "sample-scene.json": () => Response.json({ version: 2, objects: [] }),
+    });
+    const store = new Store();
+    await store.load();
+    expect(store.status).toBe("static: sample-scene.json");
+  });
+});

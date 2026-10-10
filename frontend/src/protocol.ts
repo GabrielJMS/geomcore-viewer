@@ -1,5 +1,5 @@
 // Scene protocol v2: types, validation and v1 migration. Mirrors protocol/SCENE.md.
-import { CURVE_TYPES, Geom } from "./geom/types";
+import { CURVE_TYPES, Geom, SURFACE_TYPES } from "./geom/types";
 import type { Vec3 } from "./geom/vec";
 
 export const PROTOCOL = 2;
@@ -102,6 +102,13 @@ const str = (v: unknown): string | undefined => (typeof v === "string" && v !== 
 const record = (v: unknown): Record<string, unknown> | undefined =>
   typeof v === "object" && v !== null && !Array.isArray(v) ? (v as Record<string, unknown>) : undefined;
 
+const isRange = (v: unknown): boolean => Array.isArray(v) && v.length === 2 && v.every(finite);
+
+function validWindow(w: unknown): boolean {
+  const r = record(w);
+  return r !== undefined && (r.u === undefined || isRange(r.u)) && (r.v === undefined || isRange(r.v));
+}
+
 /** Validate one object (v1 entities are migrated first). Never throws. */
 export function parseObject(raw: unknown): { object: SceneObject } | { problem: Problem } {
   const r = record(raw);
@@ -112,7 +119,7 @@ export function parseObject(raw: unknown): { object: SceneObject } | { problem: 
   if (id === "?") return fail("missing string id");
   const g = record(r.geom);
   if (!g || typeof g.type !== "string") return fail("missing geom.type");
-  const fields = FIELDS[g.type];
+  const fields = Object.prototype.hasOwnProperty.call(FIELDS, g.type) ? FIELDS[g.type] : undefined;
   if (!fields) return fail(`unknown type "${g.type}"`);
   const geom: Record<string, unknown> = { ...g };
   for (const [key, kind] of Object.entries(fields)) {
@@ -127,6 +134,9 @@ export function parseObject(raw: unknown): { object: SceneObject } | { problem: 
     const n = (geom.vertices as Vec3[]).length;
     const idx = geom.indices as number[];
     if (idx.length % 3 !== 0 || idx.some((i) => i >= n)) return fail("mesh.indices must be triangles indexing vertices");
+  }
+  if (SURFACE_TYPES.has(g.type) && g.window !== undefined && !validWindow(g.window)) {
+    return fail(`${g.type}.window must be {u?: [a, b], v?: [a, b]}`);
   }
   if (CURVE_TYPES.has(g.type) && g.range !== undefined) {
     const range = g.range;
