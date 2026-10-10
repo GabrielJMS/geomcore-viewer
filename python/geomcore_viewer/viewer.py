@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import urllib.error
 import urllib.request
 import uuid
@@ -20,6 +21,7 @@ PALETTE = ("#d1495b", "#00798c", "#edae49", "#30638e", "#6a4c93", "#2a9d8f", "#e
 STYLE_KEYS = ("color", "width", "dashed", "opacity")
 EXTRA_KEYS = frozenset({"foci", "center", "axes", "asymptotes", "directrix", "vertex", "isolines", "wire"})
 VIEWS = ("auto", "2d", "3d")
+URL_ENV = "GEOMCORE_VIEWER_URL"  # server URL when Viewer(url=) is not given
 
 _default: Viewer | None = None
 
@@ -69,7 +71,7 @@ class Viewer:
         *,
         view: str = "auto",
         keep: bool = False,
-        url: str = f"http://127.0.0.1:{DEFAULT_PORT}",
+        url: str | None = None,
         open_browser: bool = True,
         spawn: bool = True,
     ) -> None:
@@ -77,7 +79,7 @@ class Viewer:
         if view not in VIEWS:
             raise ValueError(f"view must be one of {VIEWS}, got {view!r}")
         self.title, self.view, self.keep = title, view, keep
-        self.url = url.rstrip("/")
+        self.url = (url or os.environ.get(URL_ENV) or f"http://127.0.0.1:{DEFAULT_PORT}").rstrip("/")
         self.open_browser, self.spawn = open_browser, spawn
         self.run = uuid.uuid4().hex[:12]
         self.objects: dict[str, dict] = {}

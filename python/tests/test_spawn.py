@@ -36,8 +36,9 @@ def test_foreign_listener_is_reported(tmp_path):
     url = f"http://127.0.0.1:{httpd.server_address[1]}"
     try:
         assert probe(url) == "foreign"
-        with pytest.raises(RuntimeError, match="not a geomcore-viewer v2 server"):
+        with pytest.raises(RuntimeError, match="not a geomcore-viewer v2 server") as excinfo:
             ensure_server(url)
+        assert "set GEOMCORE_VIEWER_URL=http://127.0.0.1:<other port> or pass url=" in str(excinfo.value)
     finally:
         httpd.shutdown()
         httpd.server_close()

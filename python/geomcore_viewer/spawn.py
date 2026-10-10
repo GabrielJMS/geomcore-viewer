@@ -70,7 +70,8 @@ def ensure_server(url: str, timeout: float = 5.0) -> bool:
     if state == "foreign":
         raise RuntimeError(
             f"{url} answers but is not a geomcore-viewer v2 server (an older geomcore-viewer, "
-            "or another application). Stop it, or pass Viewer(url='http://127.0.0.1:<free port>')."
+            "or another application). Stop it, or "
+            "set GEOMCORE_VIEWER_URL=http://127.0.0.1:<other port> or pass url=."
         )
     parsed = urlparse(url)
     if parsed.hostname not in ("127.0.0.1", "localhost"):

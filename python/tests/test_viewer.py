@@ -1,6 +1,7 @@
 import json
 import math
 import socket
+import sys
 import urllib.request
 import warnings
 
@@ -253,3 +254,30 @@ def test_bad_update_leaves_viewer_usable(server):
     assert list(objs) == ["a", "b"]
     assert objs["a"]["style"] == {"color": PALETTE[0]}
     assert view.objects["a"]["style"] == {"color": PALETTE[0]}
+
+
+def test_url_defaults_to_the_environment_variable(monkeypatch):
+    monkeypatch.setenv("GEOMCORE_VIEWER_URL", "http://127.0.0.1:8799/")
+    view = Viewer(open_browser=False, spawn=False)
+    assert view.url == "http://127.0.0.1:8799"
+
+
+def test_explicit_url_overrides_the_environment_variable(monkeypatch):
+    monkeypatch.setenv("GEOMCORE_VIEWER_URL", "http://127.0.0.1:8799")
+    view = Viewer(url="http://127.0.0.1:8123", open_browser=False, spawn=False)
+    assert view.url == "http://127.0.0.1:8123"
+
+
+@pytest.mark.parametrize("value", [None, ""])
+def test_unset_or_empty_environment_variable_falls_back_to_the_default(monkeypatch, value):
+    if value is None:
+        monkeypatch.delenv("GEOMCORE_VIEWER_URL", raising=False)
+    else:
+        monkeypatch.setenv("GEOMCORE_VIEWER_URL", value)
+    assert Viewer(open_browser=False, spawn=False).url == "http://127.0.0.1:8765"
+
+
+def test_module_level_default_viewer_reads_the_variable_when_created(monkeypatch):
+    monkeypatch.setattr(sys.modules["geomcore_viewer.viewer"], "_default", None)
+    monkeypatch.setenv("GEOMCORE_VIEWER_URL", "http://127.0.0.1:8799")
+    assert gv.viewer().url == "http://127.0.0.1:8799"
