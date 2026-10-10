@@ -28,8 +28,20 @@ export class Store {
     this.handlers.add(handler);
   }
 
+  /** A throwing handler must not starve the others: report it in the status and carry on. */
   private emit(ev: StoreEvent): void {
-    for (const handler of this.handlers) handler(ev);
+    let failure: string | null = null;
+    for (const handler of this.handlers) {
+      try {
+        handler(ev);
+      } catch (err) {
+        console.error("geomcore-viewer: handler failed", err);
+        failure = err instanceof Error ? err.message : String(err);
+      }
+    }
+    if (failure === null) return;
+    this.status = `render error: ${failure}`;
+    if (ev.type !== "meta") this.emit({ type: "meta" }); // refresh the status line; a meta emit never re-emits
   }
 
   reset(doc: SceneDoc, problems: Problem[] = []): void {

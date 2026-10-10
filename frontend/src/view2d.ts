@@ -21,6 +21,7 @@ export class View2D {
   private nodes = new Map<string, PIXI.Container>();
   private box: Box = viewBox([]);
   private userMoved = false;
+  private rebuildQueued = false;
 
   constructor(private store: Store, private host: HTMLElement) {
     void this.app.init({ resizeTo: host, background: "#f4f6fa", antialias: true }).then(() => {
@@ -29,6 +30,9 @@ export class View2D {
       this.enableNav();
       store.onChange((ev) => this.onStore(ev));
       this.fit();
+    }).catch((err: unknown) => {
+      console.error("geomcore-viewer: 2D view failed", err);
+      store.setStatus(`2D view failed: ${err instanceof Error ? err.message : String(err)}`);
     });
   }
 
@@ -104,9 +108,20 @@ export class View2D {
         this.world.scale.set(s, -s);
         this.world.x = mx - wx * s;
         this.world.y = my + wy * s;
+        this.queueRebuild();
       },
       { passive: false },
     );
+  }
+
+  /** Stroke widths are in world units: refresh them once per frame while zooming. */
+  private queueRebuild(): void {
+    if (this.rebuildQueued) return;
+    this.rebuildQueued = true;
+    requestAnimationFrame(() => {
+      this.rebuildQueued = false;
+      this.rebuild();
+    });
   }
 
   private rebuild(): void {
@@ -131,7 +146,9 @@ export class View2D {
     const px = 1 / Math.max(Math.abs(this.world.scale.x), 1e-9); // one screen pixel in world units
     const gfx = new PIXI.Graphics();
     const stroke = (polylines: Vec3[][]) => {
-      for (const line of polylines) {
+      const lines = polylines.filter((l) => l.length >= 2);
+      if (!lines.length) return;
+      for (const line of lines) {
         gfx.moveTo(line[0][0], line[0][1]);
         for (const p of line.slice(1)) gfx.lineTo(p[0], p[1]);
       }

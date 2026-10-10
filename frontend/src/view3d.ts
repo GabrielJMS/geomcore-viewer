@@ -9,6 +9,10 @@ import { colorOf } from "./ui/colors";
 
 const v3 = (p: Vec3) => new BABYLON.Vector3(p[0], p[1], p[2]);
 
+/** Babylon's default feel (wheelPrecision 3, panningSensibility 1000) at a camera radius of 10. */
+const WHEEL_FEEL = 30;
+const PAN_FEEL = 10000;
+
 function color3(css: string): BABYLON.Color3 {
   try {
     return BABYLON.Color3.FromHexString(css.startsWith("#") ? css : `#${css}`);
@@ -29,7 +33,7 @@ export class View3D {
     this.scene = new BABYLON.Scene(engine);
     this.scene.useRightHandedSystem = true;
     this.scene.clearColor = new BABYLON.Color4(0.96, 0.96, 0.97, 1);
-    this.camera = new BABYLON.ArcRotateCamera("cam", -Math.PI / 2, Math.PI / 3, 10, BABYLON.Vector3.Zero(), this.scene);
+    this.camera = new BABYLON.ArcRotateCamera("cam", Math.PI / 2, Math.PI / 3, 10, BABYLON.Vector3.Zero(), this.scene);
     this.camera.upVector = new BABYLON.Vector3(0, 0, 1);
     this.camera.attachControl(canvas, true);
     new BABYLON.HemisphericLight("light", new BABYLON.Vector3(0.3, 0.5, 1), this.scene);
@@ -65,7 +69,13 @@ export class View3D {
     if (!b) return;
     const center = v3(b.min).add(v3(b.max)).scale(0.5);
     this.camera.target.copyFrom(center);
-    this.camera.radius = Math.max(v3(b.max).subtract(v3(b.min)).length() / 2, 1e-6) * 3;
+    const radius = Math.max(v3(b.max).subtract(v3(b.min)).length() / 2, 1e-6) * 3;
+    this.camera.radius = radius;
+    // The default clip planes (1 .. 10000) would hide scenes much smaller or larger than ~10 units.
+    this.camera.minZ = radius / 1000;
+    this.camera.maxZ = radius * 100;
+    this.camera.wheelPrecision = WHEEL_FEEL / radius;
+    this.camera.panningSensibility = PAN_FEEL / radius;
   }
 
   private rebuild(): void {
@@ -88,9 +98,9 @@ export class View3D {
   private build(o: SceneObject): BABYLON.AbstractMesh[] {
     const g = o.geom;
     const color = color3(colorOf(o));
-    if (isCurve(g)) return [this.lines(o.id, [tessellateCurve(g, this.box)], color)];
-    if (g.type === "polyline") return [this.lines(o.id, [g.points], color)];
-    if (g.type === "arrow") return [this.lines(o.id, arrowPolylines(g.at, g.vec), color)];
+    if (isCurve(g)) return this.lines(o.id, [tessellateCurve(g, this.box)], color);
+    if (g.type === "polyline") return this.lines(o.id, [g.points], color);
+    if (g.type === "arrow") return this.lines(o.id, arrowPolylines(g.at, g.vec), color);
     if (isSurface(g)) {
       const mesh = tessellateSurface(g, halfSize(this.box));
       return [this.surface(o, mesh.positions, mesh.indices, color)];
@@ -101,10 +111,12 @@ export class View3D {
     return []; // text and notes: panel only in Phase 1
   }
 
-  private lines(id: string, polylines: Vec3[][], color: BABYLON.Color3): BABYLON.LinesMesh {
-    const mesh = BABYLON.MeshBuilder.CreateLineSystem(`o-${id}`, { lines: polylines.map((l) => l.map(v3)) }, this.scene);
+  private lines(id: string, polylines: Vec3[][], color: BABYLON.Color3): BABYLON.AbstractMesh[] {
+    const drawable = polylines.filter((l) => l.length >= 2);
+    if (!drawable.length) return [];
+    const mesh = BABYLON.MeshBuilder.CreateLineSystem(`o-${id}`, { lines: drawable.map((l) => l.map(v3)) }, this.scene);
     mesh.color = color;
-    return mesh;
+    return [mesh];
   }
 
   private surface(o: SceneObject, positions: number[], indices: number[], color: BABYLON.Color3): BABYLON.Mesh {
@@ -119,6 +131,7 @@ export class View3D {
     mat.diffuseColor = color;
     mat.specularColor = new BABYLON.Color3(0.2, 0.2, 0.2);
     mat.backFaceCulling = false;
+    mat.twoSidedLighting = true;
     mat.alpha = Math.min(Math.max(o.style?.opacity ?? 1, 0), 1);
     mesh.material = mat;
     return mesh;

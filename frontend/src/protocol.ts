@@ -130,7 +130,10 @@ export function parseObject(raw: unknown): { object: SceneObject } | { problem: 
   for (const key of POSITIVE) if (key in fields && (geom[key] as number) <= 0) return fail(`${g.type}.${key} must be positive`);
   if (g.type === "parabola" && geom.f === 0) return fail("parabola.f must be non-zero");
   if (g.type === "line" && Math.hypot(...(geom.d as Vec3)) === 0) return fail("line.d must be non-zero");
+  if (g.type === "polyline" && (geom.points as Vec3[]).length < 2) return fail("polyline.points needs at least 2 points");
+  if (g.type === "points" && (geom.positions as Vec3[]).length === 0) return fail("points.points must not be empty");
   if (g.type === "mesh") {
+    if ((geom.indices as number[]).length === 0) return fail("mesh.indices must be a non-empty multiple of 3");
     const n = (geom.vertices as Vec3[]).length;
     const idx = geom.indices as number[];
     if (idx.length % 3 !== 0 || idx.some((i) => i >= n)) return fail("mesh.indices must be triangles indexing vertices");

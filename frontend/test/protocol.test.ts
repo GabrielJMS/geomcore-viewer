@@ -20,6 +20,10 @@ describe("parseObject", () => {
     [{ id: "a", geom: { type: "point", p: [0, NaN, 0] } }, "a", "point.p is missing or malformed"],
     [{ id: "a", geom: { type: "line", o: [0, 0, 0], d: [0, 0, 0] } }, "a", "line.d must be non-zero"],
     [{ id: "a", geom: { type: "plane", frame, window: { u: [1] } } }, "a", "plane.window must be {u?: [a, b], v?: [a, b]}"],
+    [{ id: "a", geom: { type: "polyline", points: [] } }, "a", "polyline.points needs at least 2 points"],
+    [{ id: "a", geom: { type: "polyline", points: [[0, 0, 0]] } }, "a", "polyline.points needs at least 2 points"],
+    [{ id: "a", geom: { type: "points", positions: [] } }, "a", "points.points must not be empty"],
+    [{ id: "a", geom: { type: "mesh", vertices: [[0, 0, 0]], indices: [] } }, "a", "mesh.indices must be a non-empty multiple of 3"],
     [{ id: "a", geom: { type: "constructor" } }, "a", 'unknown type "constructor"'],
   ])("rejects %j", (raw, id, message) => {
     expect(parseObject(raw)).toEqual({ problem: { id, message } });

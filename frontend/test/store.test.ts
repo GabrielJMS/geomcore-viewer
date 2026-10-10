@@ -89,6 +89,34 @@ describe("Store.apply replacement", () => {
   });
 });
 
+describe("Store.emit", () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  it("isolates a throwing handler: later handlers still run and the status shows the error", () => {
+    const errors = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const store = new Store();
+    const seen: StoreEvent["type"][] = [];
+    store.onChange((ev) => {
+      if (ev.type === "upsert") throw new Error("boom");
+    });
+    store.onChange((ev) => seen.push(ev.type));
+    store.apply({ type: "upsert", objects: [pt("a")] });
+    expect(seen).toContain("upsert");
+    expect(store.status).toBe("render error: boom");
+    expect(errors).toHaveBeenCalled();
+  });
+
+  it("does not recurse forever when a handler throws on every event", () => {
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const store = new Store();
+    store.onChange(() => {
+      throw new Error("always");
+    });
+    expect(() => store.setStatus("x")).not.toThrow();
+    expect(store.status).toBe("render error: always");
+  });
+});
+
 describe("Store.load", () => {
   afterEach(() => vi.unstubAllGlobals());
 
