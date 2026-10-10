@@ -39,6 +39,11 @@ view.add(C.intersect_ellipse(E), label="P")   # → P₁, P₂
 pip install geomcore-viewer        # stdlib only; the built viewer ships in the wheel
 ```
 
+The viewer itself has no dependencies, but the quick-start above and the scripts in
+`examples/` build their objects with geomcore: `pip install geomcore`, or, from a
+source checkout, `PYTHONPATH=../geomcore/geomcore-py` (add `python` when running
+from this repo, as in the Development section).
+
 ## API
 
 | Call | Does |
@@ -54,8 +59,9 @@ pip install geomcore-viewer        # stdlib only; the built viewer ships in the 
 The server listens on `http://127.0.0.1:8765` by default. If that port is
 busy, set `GEOMCORE_VIEWER_URL=http://127.0.0.1:<other port>` (every script
 and `gv.add` picks it up; a started server listens on that port) or pass
-`gv.Viewer(url=...)`. An explicit `url=` wins over the variable. Stop such a server with
-`geomcore-viewer stop --port <other port>`.
+`gv.Viewer(url=...)`. An explicit `url=` wins over the variable. A blank
+variable counts as unset. `geomcore-viewer serve` and `stop` take their default
+port from the same variable; `--port` overrides it.
 
 ## Layout
 

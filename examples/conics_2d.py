@@ -22,7 +22,7 @@ view = gv.Viewer("Conics and their intersections", spawn=args.save is None)
 
 E = Ellipse3D.from_frame(Frame3D.world(), 3.0, 2.0)
 C = Circle3D(Point3D(2.0, 1.0, 0.0), Vector3D.z(), 1.5)
-H = Hyperbola3D.from_frame(Frame3D.world(), 1.0, 1.0)
+H = Hyperbola3D.from_frame(Frame3D.world(), 1.0, 0.5)
 L = Line3D(Point3D(0.0, -3.0, 0.0), Vector3D(1.0, 1.0, 0.0))
 
 view.add(E, label="E", group="conics", foci=True)

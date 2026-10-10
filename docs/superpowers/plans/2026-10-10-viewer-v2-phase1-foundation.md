@@ -3801,7 +3801,7 @@ view = gv.Viewer("Conics and their intersections", spawn=args.save is None)
 
 E = Ellipse3D.from_frame(Frame3D.world(), 3.0, 2.0)
 C = Circle3D(Point3D(2.0, 1.0, 0.0), Vector3D.z(), 1.5)
-H = Hyperbola3D.from_frame(Frame3D.world(), 1.0, 1.0)
+H = Hyperbola3D.from_frame(Frame3D.world(), 1.0, 0.5)
 L = Line3D(Point3D(0.0, -3.0, 0.0), Vector3D(1.0, 1.0, 0.0))
 
 view.add(E, label="E", group="conics", foci=True)
@@ -3857,7 +3857,7 @@ scripts/bundle-frontend.sh
 PYTHONPATH=python:../geomcore/geomcore-py .venv/bin/python examples/conics_2d.py
 ```
 
-Expected: prints `geomcore-viewer: http://127.0.0.1:8765`, the browser opens, the panel lists E, C, H, L, P₁, P₂, Q₁, Q₂, R₁, R₂, S and a note `S: tangent`; the 2D pane shows the line and hyperbola running to the pane edges. Take a Playwright screenshot of `http://127.0.0.1:8765/`. Re-run the script: the picture stays (no empty flash), objects identical. Then:
+Expected: prints `geomcore-viewer: http://127.0.0.1:8765`, the browser opens, the panel lists E, C, H, L, P₁, P₂, Q₁, Q₂, R₁, R₂, S₁, S₂ (no notes); the 2D pane shows the line and hyperbola running to the pane edges. Take a Playwright screenshot of `http://127.0.0.1:8765/`. Re-run the script: the picture stays (no empty flash), objects identical. Then:
 
 ```bash
 PYTHONPATH=python:../geomcore/geomcore-py .venv/bin/python examples/quadrics_3d.py
