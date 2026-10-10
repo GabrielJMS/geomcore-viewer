@@ -129,9 +129,10 @@ def test_extras_are_validated(server):
 
 
 def test_nan_geometry_is_rejected(server):
+    view = make(server)
     with pytest.raises(ValueError, match="bad.*NaN"):
-        make(server).add(Point3D(math.nan, 0), label="bad")
-    assert _ids(server) == []
+        view.add(Point3D(math.nan, 0), label="bad")
+    assert view.objects == {} and _ids(server) == []
 
 
 def test_escape_hatches_coerce_inputs(server):
@@ -187,3 +188,54 @@ def test_duplicate_note_ids_collapse_to_one_handle(server):
     assert isinstance(handle, gv.Handle) and handle.id == "X·note"
     [obj] = _scene(server)["objects"]
     assert obj["id"] == "X·note" and obj["geom"]["level"] == "warn"
+
+
+def test_bad_style_value_leaves_viewer_usable(server):
+    view = make(server)
+    with pytest.raises(ValueError, match="bad.*NaN"):
+        view.add(Point3D(0, 0), label="bad", opacity=math.nan)
+    with pytest.raises(TypeError, match="bad"):
+        view.add(Point3D(0, 0), label="bad", width=object())
+    assert view.objects == {}
+    view.add(Point3D(1, 0), label="good")
+    assert _ids(server) == ["good"]
+
+
+def test_server_rejection_does_not_block_later_adds(server):
+    view = make(server)
+    with pytest.raises(RuntimeError, match="rejected"):
+        view.add(Point3D(0, 0), label=5)
+    view.add(Point3D(1, 0), label="good")
+    assert _ids(server) == ["good"]
+
+
+def test_offline_removal_is_replayed_and_scene_resent_after_restart(tmp_path):
+    first = Server(tmp_path, port=0).start()
+    view = Viewer(url=first.url, open_browser=False)
+    handle_a = view.add(Point3D(0, 0), label="a")
+    view.add(Point3D(1, 0), label="b")
+    first.stop()
+    with pytest.warns(RuntimeWarning, match="unreachable"):
+        handle_a.remove()
+    second = Server(tmp_path, port=first.port).start()
+    try:
+        view.add(Point3D(2, 0), label="c")
+        assert _ids(second) == ["b", "c"]
+    finally:
+        second.stop()
+
+
+def test_offline_clear_is_replayed_after_reconnect(tmp_path):
+    first = Server(tmp_path, port=0).start()
+    view = Viewer(url=first.url, open_browser=False, keep=True)
+    view.add(Point3D(0, 0), label="a")
+    first.stop()
+    with pytest.warns(RuntimeWarning, match="unreachable"):
+        view.clear()
+    second = Server(tmp_path, port=first.port).start()
+    try:
+        second.state.post({"objects": [{"id": "ghost", "geom": {"type": "point", "p": [0, 0, 0]}}]})
+        view.add(Point3D(1, 0), label="b")
+        assert _ids(second) == ["b"]
+    finally:
+        second.stop()

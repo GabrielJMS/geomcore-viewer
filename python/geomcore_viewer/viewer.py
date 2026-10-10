@@ -37,6 +37,7 @@ class Handle:
 
     def remove(self) -> None:
         self.viewer._remove(self.id)
+        self.viewer._flush()
 
     def __repr__(self) -> str:
         return f"Handle({self.id!r})"
@@ -72,7 +73,10 @@ class Viewer:
         self.objects: dict[str, dict] = {}
         self._families: dict[str, list[str]] = {}  # label → ids its last add produced
         self._unsent: list[str] = []
-        self._run_sent = False
+        self._pending_removals: list[str] = []  # deletes the server has not acknowledged yet
+        self._pending_clear = False
+        self._run_sent = False  # this run has reached a server at least once
+        self._resync = False  # the server may have lost our scene: re-send everything
         self._online: bool | None = None  # None until the first send
         self._warned = False
         self._next_color = 0
@@ -140,10 +144,6 @@ class Viewer:
         if geom["type"] in SURFACE_TYPES:
             others = (o["geom"] for o in self.objects.values() if o["id"] != object_id)
             geom = with_window(geom, scene_extent(others), u, v)
-        try:
-            json.dumps(geom, allow_nan=False)
-        except ValueError:
-            raise ValueError(f"{object_id}: geometry has NaN or infinite values") from None
         obj: dict = {"id": object_id, "geom": geom}
         if part["label"]:
             obj["label"] = part["label"]
@@ -156,6 +156,12 @@ class Viewer:
             obj["style"] = {"color": previous.get("color") or self._color(), **style}
         if extras:
             obj["extras"] = dict(extras)
+        try:
+            json.dumps(obj, allow_nan=False)
+        except ValueError:
+            raise ValueError(f"{object_id}: geometry, style or extras have NaN or infinite values") from None
+        except TypeError as err:
+            raise TypeError(f"{object_id}: {err}") from None
         return obj
 
     def _color(self) -> str:
@@ -179,18 +185,20 @@ class Viewer:
         self._flush()
 
     def _remove(self, object_id: str) -> None:
+        """Drop an object here and queue its deletion on the server (sent by ``_flush``)."""
         self.objects.pop(object_id, None)
         self._unsent = [i for i in self._unsent if i != object_id]
-        if self._run_sent and self._connect():
-            self._request("DELETE", f"/api/objects/{quote(object_id, safe='')}", missing_ok=True)
+        if self._run_sent:
+            self._pending_removals.append(object_id)
 
     def clear(self) -> None:
         """Empty the scene, here and in the open tab."""
         self.objects.clear()
         self._families.clear()
         self._unsent.clear()
-        if self._connect():
-            self._request("POST", "/api/clear", {})
+        self._pending_removals.clear()
+        self._pending_clear = True
+        self._flush()
 
     # -- persistence -----------------------------------------------------------
     def scene(self) -> dict:
@@ -209,15 +217,34 @@ class Viewer:
 
     # -- transport -------------------------------------------------------------
     def _flush(self) -> None:
-        if not self._unsent or not self._connect():
+        """Bring the server up to date: pending clear, then deletes, then upserts."""
+        if not (self._unsent or self._pending_removals or self._pending_clear) or not self._connect():
+            return
+        if self._pending_clear:
+            self._pending_clear = False
+            if not self._request("POST", "/api/clear", {}):
+                self._pending_clear = True
+                return
+        while self._pending_removals:
+            object_id = self._pending_removals.pop(0)
+            if not self._request("DELETE", f"/api/objects/{quote(object_id, safe='')}", missing_ok=True):
+                self._pending_removals.insert(0, object_id)
+                return
+        if not self._unsent:
             return
         ids = list(dict.fromkeys(self._unsent))
         batch: dict = {"objects": [self.objects[i] for i in ids if i in self.objects],
                        "title": self.title, "view": self.view}
-        if not self._run_sent:
+        if self._resync or not self._run_sent:
             batch.update(run=self.run, keep=self.keep)
-        if self._request("POST", "/api/objects", batch):
-            self._run_sent = True
+        try:
+            sent = self._request("POST", "/api/objects", batch)
+        except RuntimeError:
+            # A rejected batch must not block every later add.
+            self._unsent = [i for i in self._unsent if i not in ids]
+            raise
+        if sent:
+            self._run_sent, self._resync = True, False
             self._unsent.clear()
 
     def _connect(self) -> bool:
@@ -248,7 +275,10 @@ class Viewer:
                 return True
             raise RuntimeError(f"geomcore-viewer rejected {method} {path}: {err.read().decode(errors='replace')}") from err
         except OSError as err:
+            # The server may come back empty, so the whole scene goes out again.
             self._online = False
+            self._resync = self._run_sent
+            self._unsent = list(self.objects)
             self._warn(f"geomcore-viewer at {self.url} is unreachable ({err}); keeping objects locally")
             return False
 
