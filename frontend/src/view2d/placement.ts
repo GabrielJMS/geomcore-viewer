@@ -24,6 +24,8 @@ interface Box {
 const GAP = 6;
 const DOT = 5;
 export const MAX_LABELS = 500;
+/** Requests tried per frame; bounds the work of the overlap checks on dense scenes. */
+export const MAX_ATTEMPTS = 1000;
 
 /** Candidate top-left corners around the anchor, in order of preference: NE, E, SE, NW, W, SW, N, S. */
 function candidates(q: LabelRequest): [number, number][] {
@@ -46,12 +48,13 @@ const overlaps = (a: Box, b: Box): boolean => a.l < b.r && b.l < a.r && a.t < b.
  * Greedy placement (spec §5.2): requests in order, each at the first candidate that stays
  * inside the `width` × `height` pane and overlaps neither a placed label nor any anchor's
  * dot. Fixed labels (plain text objects) go first, where they were asked. A label with no
- * free spot is left out; at most `MAX_LABELS` are placed.
+ * free spot is left out; at most `MAX_LABELS` are placed. At most `MAX_ATTEMPTS` requests
+ * are tried, and only their dots are kept clear.
  */
 export function placeLabels(requests: LabelRequest[], width: number, height: number): PlacedLabel[] {
-  const taken: Box[] = requests.map((q) => ({ l: q.ax - DOT, t: q.ay - DOT, r: q.ax + DOT, b: q.ay + DOT }));
+  const ordered = [...requests.filter((q) => q.fixed), ...requests.filter((q) => !q.fixed)].slice(0, MAX_ATTEMPTS);
+  const taken: Box[] = ordered.map((q) => ({ l: q.ax - DOT, t: q.ay - DOT, r: q.ax + DOT, b: q.ay + DOT }));
   const out: PlacedLabel[] = [];
-  const ordered = [...requests.filter((q) => q.fixed), ...requests.filter((q) => !q.fixed)];
   for (const q of ordered) {
     if (out.length >= MAX_LABELS) break;
     const spots: [number, number][] = q.fixed ? [[q.ax, q.ay - q.h]] : candidates(q);

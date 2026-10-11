@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { LabelRequest, MAX_LABELS, placeLabels } from "../src/view2d/placement";
+import { LabelRequest, MAX_ATTEMPTS, MAX_LABELS, placeLabels } from "../src/view2d/placement";
 
 const req = (key: string, ax: number, ay: number, extra: Partial<LabelRequest> = {}): LabelRequest => ({
   key,
@@ -55,5 +55,18 @@ describe("placeLabels", () => {
   it("stops at the label cap", () => {
     const many = Array.from({ length: 2000 }, (_, i) => req(`p${i}`, (i % 100) * 1000, Math.floor(i / 100) * 1000, { w: 10, h: 10 }));
     expect(placeLabels(many, 1e6, 1e6)).toHaveLength(MAX_LABELS);
+  });
+
+  it("tries at most MAX_ATTEMPTS requests, however many are asked", () => {
+    const unfit = Array.from({ length: MAX_ATTEMPTS }, (_, i) => req(`u${i}`, 500, 500, { w: 2e6 }));
+    const fit = Array.from({ length: 4000 }, (_, i) => req(`f${i}`, (i % 100) * 1000 + 500, Math.floor(i / 100) * 1000 + 500, { w: 10, h: 10 }));
+    expect(placeLabels([...unfit, ...fit], 1e6, 1e6)).toEqual([]);
+  });
+
+  it("caps 5000 requests at MAX_LABELS, all from the first MAX_ATTEMPTS", () => {
+    const many = Array.from({ length: 5000 }, (_, i) => req(`p${i}`, (i % 100) * 1000 + 500, Math.floor(i / 100) * 1000 + 500, { w: 10, h: 10 }));
+    const keys = placeLabels(many, 1e6, 1e6).map((p) => Number(p.key.slice(1)));
+    expect(keys).toHaveLength(MAX_LABELS);
+    expect(Math.max(...keys)).toBeLessThan(MAX_ATTEMPTS);
   });
 });
