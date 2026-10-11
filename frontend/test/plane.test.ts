@@ -55,3 +55,9 @@ describe("formatTick", () => {
     expect(formatTick(7 * major, major)).toBe("7e8");
   });
 });
+
+describe("ticks at extreme offsets", () => {
+  it("gives up instead of looping when indices pass the safe integers", () => {
+    expect(ticks(1e6 - 4e-10, 1e6 + 4e-10, 1e-10)).toEqual([]);
+  });
+});

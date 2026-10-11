@@ -17,6 +17,7 @@ export function gridSpacing(scale: number, targetPx = 60): { major: number; mino
 export function ticks(lo: number, hi: number, step: number, max = 2000): number[] {
   const first = Math.ceil(lo / step);
   const last = Math.floor(hi / step);
+  if (Math.abs(first) > Number.MAX_SAFE_INTEGER || Math.abs(last) > Number.MAX_SAFE_INTEGER) return [];
   if (!(last - first < max)) return [];
   const out: number[] = [];
   for (let i = first; i <= last; i++) out.push(i * step);
