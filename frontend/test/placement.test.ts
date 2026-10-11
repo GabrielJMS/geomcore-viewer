@@ -1,0 +1,59 @@
+import { describe, expect, it } from "vitest";
+import { LabelRequest, MAX_LABELS, placeLabels } from "../src/view2d/placement";
+
+const req = (key: string, ax: number, ay: number, extra: Partial<LabelRequest> = {}): LabelRequest => ({
+  key,
+  ax,
+  ay,
+  w: 60,
+  h: 16,
+  ...extra,
+});
+
+interface Rect {
+  l: number;
+  t: number;
+  r: number;
+  b: number;
+}
+const overlap = (a: Rect, b: Rect) => a.l < b.r && b.l < a.r && a.t < b.b && b.t < a.b;
+
+describe("placeLabels", () => {
+  it("puts a lone label north-east of its anchor", () => {
+    expect(placeLabels([req("a", 100, 100)], 800, 600)).toEqual([{ key: "a", left: 106, top: 78 }]);
+  });
+
+  it("moves a label inside the pane near an edge", () => {
+    const [placed] = placeLabels([req("a", 790, 5)], 800, 600);
+    expect(placed.left + 60).toBeLessThanOrEqual(800);
+    expect(placed.top).toBeGreaterThanOrEqual(0);
+  });
+
+  it("never overlaps two labels nor covers another anchor's dot", () => {
+    const requests = Array.from({ length: 30 }, (_, i) => req(`p${i}`, 300 + (i % 6) * 25, 300 + Math.floor(i / 6) * 12));
+    const placed = placeLabels(requests, 800, 600);
+    expect(placed.length).toBeGreaterThan(5);
+    const boxes = placed.map((p) => ({ l: p.left, t: p.top, r: p.left + 60, b: p.top + 16 }));
+    for (let i = 0; i < boxes.length; i++) {
+      for (let j = i + 1; j < boxes.length; j++) expect(overlap(boxes[i], boxes[j])).toBe(false);
+      for (const q of requests) expect(overlap(boxes[i], { l: q.ax - 5, t: q.ay - 5, r: q.ax + 5, b: q.ay + 5 })).toBe(false);
+    }
+  });
+
+  it("drops a label with no free spot", () => {
+    const placed = placeLabels([req("a", 30, 10), req("b", 30, 10)], 70, 30);
+    expect(placed.map((p) => p.key)).toEqual([]);
+    expect(placeLabels([req("a", 10, 28)], 100, 30).map((p) => p.key)).toEqual(["a"]);
+  });
+
+  it("places fixed labels first, exactly above their anchor", () => {
+    const placed = placeLabels([req("dot", 100, 100), req("text", 100, 100, { fixed: true })], 800, 600);
+    expect(placed[0]).toEqual({ key: "text", left: 100, top: 84 });
+    expect(placed.map((p) => p.key)).toEqual(["text", "dot"]);
+  });
+
+  it("stops at the label cap", () => {
+    const many = Array.from({ length: 2000 }, (_, i) => req(`p${i}`, (i % 100) * 1000, Math.floor(i / 100) * 1000, { w: 10, h: 10 }));
+    expect(placeLabels(many, 1e6, 1e6)).toHaveLength(MAX_LABELS);
+  });
+});
