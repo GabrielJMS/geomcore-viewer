@@ -19,9 +19,9 @@ export function expandRect(r: Rect, frac: number): Rect {
   return { xmin: r.xmin - dx, xmax: r.xmax + dx, ymin: r.ymin - dy, ymax: r.ymax + dy };
 }
 
-/** Real roots of a·x² + b·x + c without cancellation; a vanishing `a` falls back to the linear case. */
+/** Real roots of a·x² + b·x + c without cancellation; `a === 0` is the linear case. */
 export function quadraticRoots(a: number, b: number, c: number): number[] {
-  if (a === 0 || Math.abs(a) <= 1e-12 * Math.max(Math.abs(b), Math.abs(c))) return b === 0 ? [] : [-c / b];
+  if (a === 0) return b === 0 ? [] : [-c / b];
   const disc = b * b - 4 * a * c;
   if (disc < 0) return [];
   const q = -0.5 * (b + (b >= 0 ? 1 : -1) * Math.sqrt(disc));

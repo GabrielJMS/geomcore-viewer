@@ -30,6 +30,22 @@ describe("quadraticRoots", () => {
     const [small] = quadraticRoots(1, -1e8, 1).sort((a, b) => a - b);
     expect(small).toBeCloseTo(1e-8, 20);
   });
+
+  it("keeps the real roots of a small-a quadratic with no linear term", () => {
+    const [lo, hi] = quadraticRoots(2.5e-7, 0, -3e5).sort((a, b) => a - b);
+    expect(hi / Math.sqrt(1.2e12)).toBeCloseTo(1, 12);
+    expect(lo / -Math.sqrt(1.2e12)).toBeCloseTo(1, 12);
+  });
+
+  it("returns no roots when the discriminant is negative even with a tiny a", () => {
+    expect(quadraticRoots(1e-13, 1e-12, 1)).toEqual([]);
+  });
+
+  it("keeps the large root when a is tiny", () => {
+    const roots = quadraticRoots(1, -1e8, 1).sort((a, b) => a - b);
+    expect(roots.length).toBe(2);
+    expect(roots[1] / 1e8).toBeCloseTo(1, 12);
+  });
 });
 
 describe("expandRect", () => {
@@ -69,6 +85,13 @@ describe("clipCurve2D", () => {
   it("clips a hyperbola branch in closed form", () => {
     const t = Math.acosh(10);
     expectRanges(clipCurve2D({ type: "hyperbola", frame: world, a: 1, b: 1 }, R(-10, 10, -10, 10)), [[-t, t]]);
+  });
+
+  it("clips a parabola with a large focal length", () => {
+    const edge = Math.sqrt(1.2e12);
+    const [[lo, hi]] = clipCurve2D({ type: "parabola", frame: world, f: 1e6 }, R(-1e6, 3e5, -2e6, 2e6));
+    expect(hi / edge).toBeCloseTo(1, 12);
+    expect(lo / -edge).toBeCloseTo(1, 12);
   });
 
   it("drops a hyperbola branch that lies outside", () => {
