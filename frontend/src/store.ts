@@ -23,6 +23,10 @@ export class Store {
   status = "";
   private handlers = new Set<StoreHandler>();
   private swapPending = false;
+  /** True once the page is connected to a live server (as opposed to a static scene). */
+  live = false;
+  /** The scene document last loaded from the server, to skip the identical first `scene` event. */
+  private lastScene: string | null = null;
 
   onChange(handler: StoreHandler): void {
     this.handlers.add(handler);
@@ -58,12 +62,20 @@ export class Store {
 
   /** Apply one live server event (see SCENE.md "Runs"). */
   apply(ev: ServerEvent): void {
+    if (ev.type !== "scene") this.lastScene = null; // the state has moved on: a later scene must apply
     switch (ev.type) {
-      case "scene":
+      case "scene": {
         // The first event of every /events connection: the full scene, taken under the
-        // server's lock, so everything after it is a delta on top of exactly this.
-        if (this.loadJson(ev.doc, "live")) this.setStatus("live");
+        // server's lock, so everything after it is a delta on top of exactly this. On the
+        // first connection it repeats the snapshot connectLive just loaded: skip that one.
+        const key = JSON.stringify(ev.doc);
+        if (key !== this.lastScene) {
+          if (!this.loadJson(ev.doc, "live")) return;
+          this.lastScene = key;
+        }
+        this.setStatus("live");
         return;
+      }
       case "run":
         this.run = ev.run;
         this.swapPending = !ev.keep;
@@ -188,6 +200,8 @@ export class Store {
       return "failed";
     }
     if (!this.loadJson(scene.raw, "live")) return "failed";
+    this.live = true;
+    this.lastScene = JSON.stringify(scene.raw);
     this.setStatus("live");
     const events = new EventSource("events");
     events.onmessage = (msg) => {
@@ -208,16 +222,16 @@ export class Store {
   /** The "clear" button: empty the page and, when live, the server's scene. */
   async clearAll(): Promise<void> {
     this.apply({ type: "clear" });
+    if (!this.live) return; // a static page: there is no server scene to clear
     try {
       const res = await fetch("api/clear", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: "{}",
       });
-      // 404: a static page, there is no server scene to clear
-      if (!res.ok && res.status !== 404) this.setStatus(`clear failed: the server answered HTTP ${res.status}`);
+      if (!res.ok) this.setStatus(`clear failed: the server answered HTTP ${res.status}`);
     } catch {
-      /* no server reachable: nothing to clear there */
+      this.setStatus("clear failed: the server is unreachable");
     }
   }
 }
