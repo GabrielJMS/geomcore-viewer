@@ -1,6 +1,7 @@
 import type { SceneObject } from "../protocol";
 
-export const DEFAULT_COLOR = "#30638e";
+/** Contrast ≥ 3:1 on both theme backgrounds (test/theme.test.ts). */
+export const DEFAULT_COLOR = "#3a7cc2";
 
 const HEX = /^#([0-9a-f]{3,4}|[0-9a-f]{6}|[0-9a-f]{8})$/i;
 const FUNCTIONAL = /^rgba?\(\s*(\d+),\s*(\d+),\s*(\d+)/;
