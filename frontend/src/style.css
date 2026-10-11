@@ -18,3 +18,13 @@ aside li { display: flex; gap: 0.5rem; align-items: center; padding: 0.15rem 0; 
 aside li .type { margin-left: auto; color: #888; font-size: 0.75rem; }
 aside li.note { color: #444; }
 aside li.note.warn, aside li.problem { color: #a4471c; }
+
+#view2d { overflow: hidden; }
+.labels { position: absolute; inset: 0; pointer-events: none; }
+.labels > div { position: absolute; left: 0; top: 0; white-space: nowrap; line-height: 1.35; }
+.labels .label { font-weight: 600; pointer-events: auto; user-select: text; cursor: text; text-shadow: 0 0 3px #f7f8fa, 0 0 2px #f7f8fa; }
+.labels .label.extra { font-weight: 500; }
+.labels .label.lit { text-decoration: underline; }
+.labels .tick { font-variant-numeric: tabular-nums; }
+.tooltip { position: absolute; left: 0; top: 0; pointer-events: none; padding: 0.3rem 0.5rem; border-radius: 4px; background: rgba(17, 24, 39, 0.92); color: #f9fafb; font-size: 12px; line-height: 1.4; white-space: nowrap; }
+.tooltip .head { font-weight: 600; }

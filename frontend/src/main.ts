@@ -1,7 +1,8 @@
 import "./style.css";
 import { Store } from "./store";
 import { mountPanel } from "./ui/panel";
-import { View2D } from "./view2d";
+import { UiState } from "./ui/state";
+import { View2D } from "./view2d/view";
 import { View3D } from "./view3d";
 
 function byId<T extends HTMLElement = HTMLElement>(id: string): T {
@@ -11,8 +12,10 @@ function byId<T extends HTMLElement = HTMLElement>(id: string): T {
 }
 
 const store = new Store();
+const ui = new UiState();
 const view3d = new View3D(store, byId<HTMLCanvasElement>("canvas3d"));
-const view2d = new View2D(store, byId("view2d"));
+const view2d = new View2D(store, ui, byId("view2d"), (message) => store.setStatus(message));
+view2d.setActive(true);
 mountPanel(store, byId("entity-list"), byId("title"), byId("status"));
 
 byId("fit").addEventListener("click", () => {
@@ -20,10 +23,9 @@ byId("fit").addEventListener("click", () => {
   view2d.fitRequested();
 });
 byId<HTMLInputElement>("autofit").addEventListener("change", (e) => {
-  if ((e.target as HTMLInputElement).checked) {
-    view3d.fitRequested();
-    view2d.fitRequested();
-  }
+  const on = (e.target as HTMLInputElement).checked;
+  ui.setAutoFit(on); // the 2D view follows UiState; the 3D view reads the checkbox until Task 9
+  if (on) view3d.fitRequested();
 });
 byId("clear").addEventListener("click", () => void store.clearAll());
 
