@@ -53,6 +53,21 @@ describe("panelModel", () => {
     expect(intersections.rows[0]).toMatchObject({ visible: false, shown: false, selected: false });
   });
 
+  it("names a pcurve's surface, and warns when that surface is missing or not a surface", () => {
+    const uv = { type: "line", o: [0, 0, 0], d: [1, 0, 0] };
+    const store = storeOf([
+      obj("Y", { type: "cylinder", frame, r: 2 }, { label: "cyl" }),
+      obj("ok", { type: "pcurve", surface: "Y", curve: uv }),
+      obj("lost", { type: "pcurve", surface: "gone", curve: uv }),
+      obj("odd", { type: "pcurve", surface: "ok", curve: uv }),
+    ]);
+    const rows = panelModel(store, new UiState(null)).groups.flatMap((g) => g.rows);
+    expect(rows.find((r) => r.id === "ok")).toMatchObject({ detail: "pcurve on cyl", warn: false });
+    expect(rows.find((r) => r.id === "lost")).toMatchObject({ detail: "no surface gone", warn: true });
+    expect(rows.find((r) => r.id === "odd")).toMatchObject({ detail: "no surface ok", warn: true });
+    expect(rows.find((r) => r.id === "Y")).toMatchObject({ detail: "cylinder", warn: false });
+  });
+
   it("drops the ungrouped section when every object has a group", () => {
     const model = panelModel(storeOf([scene[0]]), new UiState(null));
     expect(model.groups.map((g) => g.name)).toEqual(["conics"]);

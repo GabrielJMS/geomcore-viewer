@@ -68,6 +68,7 @@ aside li.object.hidden .name, aside li.object.hidden .swatch { opacity: 0.4; }
 aside .swatch { flex: none; width: 0.8em; height: 0.8em; border-radius: 2px; }
 aside .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 aside .detail { margin-left: auto; color: var(--muted); font-size: 0.75rem; white-space: nowrap; font-variant-numeric: tabular-nums; }
+aside .detail.warn { color: var(--warn); }
 aside li.group { margin-top: 0.4rem; }
 aside .group-head { display: flex; gap: 0.35rem; align-items: center; font-weight: 600; padding: 0.15rem 0; }
 aside .group > ul { padding-left: 1.1rem; }

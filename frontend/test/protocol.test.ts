@@ -25,8 +25,31 @@ describe("parseObject", () => {
     [{ id: "a", geom: { type: "points", positions: [] } }, "a", "points.positions must not be empty"],
     [{ id: "a", geom: { type: "mesh", vertices: [[0, 0, 0]], indices: [] } }, "a", "mesh.indices must be a non-empty multiple of 3"],
     [{ id: "a", geom: { type: "constructor" } }, "a", 'unknown type "constructor"'],
+    [{ id: "a", geom: { type: "pcurve", curve: { type: "line", o: [0, 0], d: [1, 0] } } }, "a", "pcurve.surface must be an object id"],
+    [{ id: "a", geom: { type: "pcurve", surface: "Y", curve: { type: "ellipse", frame, a: 2, b: 1 } } }, "a", "pcurve.curve must be a line, circle or polyline"],
+    [{ id: "a", geom: { type: "pcurve", surface: "Y" } }, "a", "pcurve.curve must be a line, circle or polyline"],
+    [{ id: "a", geom: { type: "pcurve", surface: "Y", curve: { type: "circle", frame, r: 0 } } }, "a", "pcurve.circle.r must be positive"],
+    [{ id: "a", geom: { type: "pcurve", surface: "Y", curve: { type: "line", o: [0, 0, 1], d: [1, 0, 0] } } }, "a", "pcurve.curve must lie in z = 0 (x is u, y is v)"],
   ])("rejects %j", (raw, id, message) => {
     expect(parseObject(raw)).toEqual({ problem: { id, message } });
+  });
+});
+
+describe("pcurve", () => {
+  it("accepts a (u, v) line, circle or polyline and pads 2D vectors", () => {
+    const line = parseObject({ id: "c", geom: { type: "pcurve", surface: "Y", curve: { type: "line", o: [0, 3], d: [1, 0], range: [0, 6] } } });
+    expect(line).toEqual({
+      object: { id: "c", geom: { type: "pcurve", surface: "Y", curve: { type: "line", o: [0, 3, 0], d: [1, 0, 0], range: [0, 6] } } },
+    });
+    const circle = parseObject({ id: "d", geom: { type: "pcurve", surface: "P", curve: { type: "circle", frame, r: 1 } } });
+    expect("object" in circle && circle.object.geom).toMatchObject({ type: "pcurve", curve: { type: "circle", r: 1 } });
+    const poly = parseObject({ id: "e", geom: { type: "pcurve", surface: "P", curve: { type: "polyline", points: [[0, 0], [1, 2]] } } });
+    expect("object" in poly && poly.object.geom).toEqual({ type: "pcurve", surface: "P", curve: { type: "polyline", points: [[0, 0, 0], [1, 2, 0]] } });
+  });
+
+  it("accepts a clockwise (u, v) circle, whose frame z is -z", () => {
+    const cw = { ...frame, y: [0, -1, 0], z: [0, 0, -1] };
+    expect("object" in parseObject({ id: "c", geom: { type: "pcurve", surface: "Y", curve: { type: "circle", frame: cw, r: 1 } } })).toBe(true);
   });
 });
 

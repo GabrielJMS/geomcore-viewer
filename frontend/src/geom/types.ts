@@ -30,10 +30,22 @@ export type MarkerGeom =
   | { type: "text"; at: Vec3; text: string }
   | { type: "note"; text: string; level?: "info" | "warn" };
 
-export type Geom = CurveGeom | SurfaceGeom | MarkerGeom;
+/** A curve in a surface's (u, v) plane: a line, circle or polyline in z = 0, x read as u and y as v. */
+export type UvCurve = Extract<CurveGeom, { type: "line" | "circle" }> | Extract<MarkerGeom, { type: "polyline" }>;
+
+/** A curve given by the parameters of the surface it lies on (protocol `pcurve`), drawn at S(curve(t)). */
+export interface PcurveGeom {
+  type: "pcurve";
+  /** The surface's object id. */
+  surface: string;
+  curve: UvCurve;
+}
+
+export type Geom = CurveGeom | SurfaceGeom | MarkerGeom | PcurveGeom;
 
 export const CURVE_TYPES: ReadonlySet<string> = new Set(["line", "circle", "ellipse", "parabola", "hyperbola"]);
 export const SURFACE_TYPES: ReadonlySet<string> = new Set(["plane", "cylinder", "cone", "sphere", "torus"]);
 
 export const isCurve = (g: Geom): g is CurveGeom => CURVE_TYPES.has(g.type);
 export const isSurface = (g: Geom): g is SurfaceGeom => SURFACE_TYPES.has(g.type);
+export const isPcurve = (g: Geom): g is PcurveGeom => g.type === "pcurve";

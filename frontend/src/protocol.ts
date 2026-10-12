@@ -1,5 +1,6 @@
 // Scene protocol v2: types, validation and v1 migration. Mirrors protocol/SCENE.md.
-import { CURVE_TYPES, Geom, SURFACE_TYPES } from "./geom/types";
+import { inPlaneZ0 } from "./geom/planar";
+import { CURVE_TYPES, Geom, SURFACE_TYPES, UvCurve } from "./geom/types";
 import type { Vec3 } from "./geom/vec";
 
 export const PROTOCOL = 2;
@@ -66,6 +67,7 @@ const FIELDS: Record<string, Record<string, FieldKind>> = {
   note: { text: "str" },
 };
 const POSITIVE = ["r", "a", "b", "R"];
+const UV_CURVES: ReadonlySet<string> = new Set(["line", "circle", "polyline"]);
 const VIEWS: ReadonlySet<string> = new Set(["auto", "2d", "3d"]);
 
 const finite = (x: unknown): x is number => typeof x === "number" && Number.isFinite(x);
@@ -110,6 +112,48 @@ function validWindow(w: unknown): boolean {
   return r !== undefined && (r.u === undefined || isRange(r.u)) && (r.v === undefined || isRange(r.v));
 }
 
+/** Validate one geometry (its `type` is a string): the normalized geometry, or why it is rejected. */
+function parseGeom(g: Record<string, unknown>): Geom | string {
+  const type = g.type as string;
+  if (type === "pcurve") return parsePcurve(g);
+  const fields = Object.prototype.hasOwnProperty.call(FIELDS, type) ? FIELDS[type] : undefined;
+  if (!fields) return `unknown type "${type}"`;
+  const geom: Record<string, unknown> = { ...g };
+  for (const [key, kind] of Object.entries(fields)) {
+    const value = normalize(g[key], kind);
+    if (value === null) return `${type}.${key} is missing or malformed`;
+    geom[key] = value;
+  }
+  for (const key of POSITIVE) if (key in fields && (geom[key] as number) <= 0) return `${type}.${key} must be positive`;
+  if (type === "parabola" && geom.f === 0) return "parabola.f must be non-zero";
+  if (type === "line" && Math.hypot(...(geom.d as Vec3)) === 0) return "line.d must be non-zero";
+  if (type === "polyline" && (geom.points as Vec3[]).length < 2) return "polyline.points needs at least 2 points";
+  if (type === "points" && (geom.positions as Vec3[]).length === 0) return "points.positions must not be empty";
+  if (type === "mesh") {
+    if ((geom.indices as number[]).length === 0) return "mesh.indices must be a non-empty multiple of 3";
+    const n = (geom.vertices as Vec3[]).length;
+    const idx = geom.indices as number[];
+    if (idx.length % 3 !== 0 || idx.some((i) => i >= n)) return "mesh.indices must be triangles indexing vertices";
+  }
+  if (SURFACE_TYPES.has(type) && g.window !== undefined && !validWindow(g.window)) {
+    return `${type}.window must be {u?: [a, b], v?: [a, b]}`;
+  }
+  if (CURVE_TYPES.has(type) && g.range !== undefined && !isRange(g.range)) return `${type}.range must be [t0, t1]`;
+  return geom as unknown as Geom;
+}
+
+/** A pcurve: its surface's object id, and a line, circle or polyline in z = 0 holding (u, v). */
+function parsePcurve(g: Record<string, unknown>): Geom | string {
+  const surface = str(g.surface);
+  if (surface === undefined) return "pcurve.surface must be an object id";
+  const c = record(g.curve);
+  if (!c || typeof c.type !== "string" || !UV_CURVES.has(c.type)) return "pcurve.curve must be a line, circle or polyline";
+  const curve = parseGeom(c);
+  if (typeof curve === "string") return `pcurve.${curve}`;
+  if (!inPlaneZ0(curve)) return "pcurve.curve must lie in z = 0 (x is u, y is v)";
+  return { type: "pcurve", surface, curve: curve as UvCurve };
+}
+
 /** Validate one object (v1 entities are migrated first). Never throws. */
 export function parseObject(raw: unknown): { object: SceneObject } | { problem: Problem } {
   const r = record(raw);
@@ -120,33 +164,9 @@ export function parseObject(raw: unknown): { object: SceneObject } | { problem: 
   if (id === "?") return fail("missing string id");
   const g = record(r.geom);
   if (!g || typeof g.type !== "string") return fail("missing geom.type");
-  const fields = Object.prototype.hasOwnProperty.call(FIELDS, g.type) ? FIELDS[g.type] : undefined;
-  if (!fields) return fail(`unknown type "${g.type}"`);
-  const geom: Record<string, unknown> = { ...g };
-  for (const [key, kind] of Object.entries(fields)) {
-    const value = normalize(g[key], kind);
-    if (value === null) return fail(`${g.type}.${key} is missing or malformed`);
-    geom[key] = value;
-  }
-  for (const key of POSITIVE) if (key in fields && (geom[key] as number) <= 0) return fail(`${g.type}.${key} must be positive`);
-  if (g.type === "parabola" && geom.f === 0) return fail("parabola.f must be non-zero");
-  if (g.type === "line" && Math.hypot(...(geom.d as Vec3)) === 0) return fail("line.d must be non-zero");
-  if (g.type === "polyline" && (geom.points as Vec3[]).length < 2) return fail("polyline.points needs at least 2 points");
-  if (g.type === "points" && (geom.positions as Vec3[]).length === 0) return fail("points.positions must not be empty");
-  if (g.type === "mesh") {
-    if ((geom.indices as number[]).length === 0) return fail("mesh.indices must be a non-empty multiple of 3");
-    const n = (geom.vertices as Vec3[]).length;
-    const idx = geom.indices as number[];
-    if (idx.length % 3 !== 0 || idx.some((i) => i >= n)) return fail("mesh.indices must be triangles indexing vertices");
-  }
-  if (SURFACE_TYPES.has(g.type) && g.window !== undefined && !validWindow(g.window)) {
-    return fail(`${g.type}.window must be {u?: [a, b], v?: [a, b]}`);
-  }
-  if (CURVE_TYPES.has(g.type) && g.range !== undefined) {
-    const range = g.range;
-    if (!Array.isArray(range) || range.length !== 2 || !range.every(finite)) return fail(`${g.type}.range must be [t0, t1]`);
-  }
-  const object: SceneObject = { id, geom: geom as unknown as Geom };
+  const geom = parseGeom(g);
+  if (typeof geom === "string") return fail(geom);
+  const object: SceneObject = { id, geom };
   const label = str(r.label);
   if (label) object.label = label;
   const group = str(r.group);

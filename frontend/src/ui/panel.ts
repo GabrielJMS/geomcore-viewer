@@ -1,4 +1,5 @@
 import { FrameScheduler } from "../frame";
+import { pcurveSurface } from "../geom/pcurve";
 import type { Problem, SceneObject } from "../protocol";
 import type { Store } from "../store";
 import { colorOf } from "./colors";
@@ -9,8 +10,10 @@ export interface ObjectRow {
   kind: "object";
   id: string;
   label: string;
-  /** Coordinates for a point, "N points", else the geometry type. */
+  /** Coordinates for a point, "N points", a pcurve's surface, else the geometry type. */
   detail: string;
+  /** The detail is a problem (a pcurve whose surface is missing). */
+  warn: boolean;
   color: string;
   /** The object's own checkbox. */
   visible: boolean;
@@ -39,11 +42,16 @@ export interface PanelModel {
   problems: Problem[];
 }
 
-function detailOf(o: SceneObject): string {
+function detailOf(o: SceneObject, objects: Map<string, SceneObject>): { detail: string; warn: boolean } {
   const g = o.geom;
-  if (g.type === "point") return fmtPoint(g.p);
-  if (g.type === "points") return `${g.positions.length} points`;
-  return g.type;
+  if (g.type === "point") return { detail: fmtPoint(g.p), warn: false };
+  if (g.type === "points") return { detail: `${g.positions.length} points`, warn: false };
+  if (g.type === "pcurve") {
+    if (!pcurveSurface(g, (id) => objects.get(id)?.geom)) return { detail: `no surface ${g.surface}`, warn: true };
+    const surface = objects.get(g.surface)!;
+    return { detail: `pcurve on ${surface.label ?? surface.id}`, warn: false };
+  }
+  return { detail: g.type, warn: false };
 }
 
 /** What the panel shows, from the scene and the UI state (pure, so it is unit-tested). */
@@ -65,7 +73,7 @@ export function panelModel(store: Store, ui: UiState): PanelModel {
       kind: "object",
       id: o.id,
       label: o.label ?? o.id,
-      detail: detailOf(o),
+      ...detailOf(o, store.objects),
       color: colorOf(o),
       visible: !ui.hiddenIds.has(o.id),
       shown: ui.isVisible(o),
@@ -107,7 +115,7 @@ export function mountPanel(store: Store, ui: UiState, list: HTMLElement): void {
       checkbox(row.visible, `show ${row.label}`, (on) => ui.setObjectVisible(row.id, on)),
       swatch,
       el("span", "name", row.label),
-      el("span", "detail", row.detail),
+      el("span", row.warn ? "detail warn" : "detail", row.detail),
     );
     li.addEventListener("click", () => ui.select(ui.selected === row.id ? null : row.id));
     return li;
