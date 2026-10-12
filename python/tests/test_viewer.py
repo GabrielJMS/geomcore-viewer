@@ -378,3 +378,27 @@ def test_meta_reaches_the_server(server):
     make(server).add(("points", [(0.1, Point3D(1, 0), 0.2)]), label="P")
     [obj] = _scene(server)["objects"]
     assert obj["meta"] == {"tag": "points", "params": [0.1, 0.2]}
+
+
+def test_pcurve_lies_on_a_surface_already_added(server):
+    view = make(server)
+    plane = view.add(Plane(), label="pl", u=(0, 4), v=(0, 2))
+    on_handle = view.pcurve([(0, 0), (4, 2)], on=plane, label="diag", dashed=True)
+    view.pcurve([(1, 0), (1, 2)], on="pl", label="mid")
+    objects = {o["id"]: o for o in _scene(server)["objects"]}
+    assert on_handle.id == "diag"
+    assert objects["diag"]["geom"] == {
+        "type": "pcurve", "surface": "pl", "curve": {"type": "polyline", "points": [[0.0, 0.0, 0.0], [4.0, 2.0, 0.0]]},
+    }
+    assert objects["diag"]["style"] == {"color": PALETTE[1], "dashed": True}
+    assert objects["mid"]["geom"]["surface"] == "pl"
+
+
+def test_pcurve_needs_a_surface_in_the_scene(server):
+    view = make(server)
+    point = view.add(Point3D(0, 0), label="A")
+    with pytest.raises(ValueError, match="'A' is not a surface"):
+        view.pcurve([(0, 0), (1, 1)], on=point)
+    with pytest.raises(ValueError, match="'nope' is not a surface"):
+        view.pcurve([(0, 0), (1, 1)], on="nope")
+    assert _ids(server) == ["A"]

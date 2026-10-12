@@ -11,7 +11,7 @@ import webbrowser
 from pathlib import Path
 from urllib.parse import quote
 
-from .adapt import SURFACE_TYPES, as_vec, indexed, scene_extent, to_objects, with_window
+from .adapt import SURFACE_TYPES, as_vec, indexed, scene_extent, to_objects, uv_curve, with_window
 from .server import PROTOCOL, default_url
 from .spawn import ensure_server, probe, refused_hint
 
@@ -111,6 +111,18 @@ class Viewer:
             part_label = label if len(objs) == 1 or label is None else indexed(label, i)
             parts += to_objects(obj, part_label, u=u, v=v)
         return self._commit(parts, label, group, options, u, v)
+
+    def pcurve(self, curve, on, *, label: str | None = None, group: str | None = None, **options):
+        """Show a curve given in a surface's (u, v) parameters: a geomcore ``Line2D`` or
+        ``Circle2D`` (e.g. ``circle.parametrize_on(surface)``) or a sequence of ``(u, v)``
+        pairs. ``on`` is the surface, already added: its :class:`Handle` or id. The page
+        draws the curve on the surface in 3D and in the (u,v) pane.
+        """
+        surface = on.id if isinstance(on, Handle) else on
+        if self.objects.get(surface, {}).get("geom", {}).get("type") not in SURFACE_TYPES:
+            raise ValueError(f"pcurve: {surface!r} is not a surface in this scene (add the surface first)")
+        geom = {"type": "pcurve", "surface": surface, "curve": uv_curve(curve)}
+        return self._commit([{"label": label, "geom": geom}], label, group, options)
 
     def polyline(self, points, *, label: str | None = None, group: str | None = None, **options):
         geom = {"type": "polyline", "points": [as_vec(p) for p in points]}

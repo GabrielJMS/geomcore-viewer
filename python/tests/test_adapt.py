@@ -11,6 +11,7 @@ from geomcore_viewer.adapt import (
     scene_extent,
     subscript,
     to_objects,
+    uv_curve,
     with_window,
 )
 
@@ -249,3 +250,36 @@ def test_indexed_labels_never_collide():
     assert indexed("P", 12) == "P₁₂"
     assert indexed("P₁", 2) == "P₁,₂"
     assert indexed("Q₁₀", 1) == "Q₁₀,₁"
+
+
+def test_clockwise_circle2d_gets_a_downward_frame():
+    clockwise = {"type": "circle", "frame": {"o": [1.0, 2.0, 0.0], "x": [1.0, 0.0, 0.0], "y": [0.0, -1.0, 0.0],
+                                            "z": [0.0, 0.0, -1.0]}, "r": 0.5}
+    [part] = to_objects(fake("Circle2D", clockwise, center=Point3D(1.0, 2.0), radius=0.5))
+    assert_frame(part["geom"]["frame"], clockwise["frame"])
+
+
+def test_uv_curves():
+    line = fake("Line2D", {"type": "line", "o": [0.0, 3.0, 0.0], "d": [1.0, 0.0, 0.0]},
+                origin=Point3D(0.0, 3.0), direction=Vector3D(1.0, 0.0))
+    assert uv_curve(line) == {"type": "line", "o": [0.0, 3.0, 0.0], "d": [1.0, 0.0, 0.0]}
+    assert uv_curve([(0, 0), (math.pi, 1.5)]) == {"type": "polyline", "points": [[0.0, 0.0, 0.0], [math.pi, 1.5, 0.0]]}
+    with pytest.raises(TypeError, match=r"\(u, v\)"):
+        uv_curve([(0, 0, 1), (1, 1, 1)])
+    with pytest.raises(TypeError, match="at least 2"):
+        uv_curve([(0, 0)])
+    with pytest.raises(TypeError, match="Line2D"):
+        uv_curve(fake("Line3D", {"type": "line", "o": [0.0, 0.0, 0.0], "d": [1.0, 0.0, 0.0]}))
+
+
+def test_real_geomcore_parametrize_on_gives_a_uv_curve():
+    pytest.importorskip("geomcore")
+    from geomcore import Point3D as P, Vector3D as V
+    from geomcore.curves import Circle3D
+    from geomcore.surfaces import Cylinder, Plane
+
+    Y = Cylinder(P(0, 0, 0), V.z(), 2.0)
+    q = Circle3D(P(0, 0, 1.5), V.z(), 2.0).parametrize_on(Y)
+    assert uv_curve(q) == {"type": "line", "o": [0.0, 1.5, 0.0], "d": [1.0, 0.0, 0.0]}
+    flipped = Circle3D(P(1, 1, 0), V(0, 0, -1), 0.5).parametrize_on(Plane(P(0, 0, 0), V.z()))
+    assert uv_curve(flipped)["frame"]["z"] == pytest.approx([0.0, 0.0, -1.0])
