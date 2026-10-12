@@ -1,5 +1,5 @@
 import * as BABYLON from "@babylonjs/core";
-import { cameraScale } from "./camera";
+import { cameraScale } from "./view3d/camera";
 import { Changes, FrameScheduler } from "./frame";
 import { halfSize, sameBox, sceneBounds, viewBox } from "./geom/bounds";
 import { WORLD_TOL, arrowPolylines, curvePieces, surfaceGrid, tessellateSurface } from "./geom/tessellate";
