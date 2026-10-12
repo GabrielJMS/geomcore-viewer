@@ -31,6 +31,7 @@ export class View2D {
   private cam: Camera2D = fitCamera(null, 0, 0);
   private userMoved = false;
   private sceneChanged = true;
+  private framePending = false;
   private list: DrawList = EMPTY;
   private highlight: string | null = null;
   private pointer: Vec2 | null = null;
@@ -109,7 +110,9 @@ export class View2D {
     if (ev === "autofit") {
       if (this.ui.autoFit) this.fitRequested();
     } else if (ev === "selection") {
-      this.frameSelected();
+      // Framing needs a laid-out camera: a hidden or never-drawn pane would get a degenerate scale, so wait for draw().
+      if (this.active && this.cam.width > 0 && this.cam.height > 0) this.frameSelected();
+      else this.framePending = true;
     } else if (ev !== "collapse" && ev !== "view") {
       this.frame.request(); // theme, presentation mode, visibility
     }
@@ -151,6 +154,10 @@ export class View2D {
     const refit = this.ui.autoFit && !this.userMoved && (this.sceneChanged || this.cam.width !== width || this.cam.height !== height);
     this.cam = refit ? fitCamera(this.planarBounds(), width, height) : resizeCamera(this.cam, width, height);
     this.sceneChanged = false;
+    if (this.framePending) {
+      this.framePending = false;
+      this.frameSelected();
+    }
     const palette = this.palette;
     this.app.renderer.background.color = palette.bg;
     const tickLabels = this.drawGrid(palette);
