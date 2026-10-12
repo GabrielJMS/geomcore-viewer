@@ -215,6 +215,24 @@ def test_a_refusing_viewer_gets_the_tunnel_hint():
         httpd.server_close()
 
 
+def test_a_403_cut_short_is_foreign():
+    def refuse_then_hang_up(conn):
+        conn.settimeout(2)
+        request = b""
+        while b"\r\n\r\n" not in request:  # read the whole request, so closing does not reset the connection
+            chunk = conn.recv(4096)
+            if not chunk:
+                return
+            request += chunk
+        conn.sendall(b"HTTP/1.1 403 Forbidden\r\nContent-Type: application/json\r\nContent-Length: 100\r\n\r\n{\"app\"")
+
+    url, srv = _raw_listener(refuse_then_hang_up)
+    try:
+        assert probe(url) == "foreign"
+    finally:
+        srv.close()
+
+
 def test_the_tunnel_hint_keeps_the_port():
     assert "ssh -L 9000:127.0.0.1:9000 <host>" in refused_hint("http://127.0.0.1:9000")
     assert "ssh -L 80:127.0.0.1:80 <host>" in refused_hint("http://127.0.0.1")

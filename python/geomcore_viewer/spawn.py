@@ -30,7 +30,7 @@ def _refused(err: urllib.error.HTTPError) -> bool:
         return False
     try:
         doc = json.loads(err.read())
-    except (ValueError, OSError):
+    except (ValueError, OSError, http.client.HTTPException):  # e.g. IncompleteRead: the body was cut short
         return False
     return isinstance(doc, dict) and doc.get("app") == APP
 
