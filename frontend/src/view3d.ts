@@ -22,6 +22,7 @@ export class View3D {
   private box: Box = viewBox([]);
   private userMoved = false;
   private active = false;
+  private framePending = false;
   private changes = new Changes();
   private frame = new FrameScheduler(() => this.flush());
 
@@ -56,6 +57,7 @@ export class View3D {
       if (!this.active) return;
       this.engine.resize();
       if (this.ui.autoFit && !this.userMoved) this.fit();
+      if (this.framePending) this.frame.request();
     }).observe(canvas);
     this.rebuild();
     this.fit();
@@ -101,6 +103,14 @@ export class View3D {
     }
     if (this.ui.autoFit && !this.userMoved) this.fit();
     else this.applyScale();
+    if (this.framePending && this.laidOut()) {
+      this.framePending = false;
+      this.frameSelected();
+    }
+  }
+
+  private laidOut(): boolean {
+    return this.engine.getRenderWidth() > 0 && this.engine.getRenderHeight() > 0;
   }
 
   private uiChanged(ev: UiEvent): void {
@@ -111,7 +121,11 @@ export class View3D {
         const visible = o ? this.ui.isVisible(o) : false;
         meshes.forEach((m) => m.setEnabled(visible));
       }
-    } else if (ev === "selection") this.frameSelected();
+    } else if (ev === "selection") {
+      // The radius depends on the pane's aspect ratio: a hidden or unsized canvas would get a wrong one, so wait for a flush.
+      if (this.active && this.laidOut()) this.frameSelected();
+      else this.framePending = true;
+    }
     else if (ev === "autofit" && this.ui.autoFit) this.fitRequested();
   }
 
