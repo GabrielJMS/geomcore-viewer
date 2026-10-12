@@ -42,12 +42,16 @@ function uvRanges(g: PcurveGeom["curve"] & { type: "line" | "circle" }, s: Surfa
 const SEEDS_PER_TURN = 8;
 /** Most turns a doubly-wrapped line is followed when its slope never closes (an irrational torus winding). */
 const MAX_TURNS = 32;
+/** Most seed segments, so a tightly wound curve keeps sampleAdaptive's point budget (4096). */
+const MAX_SEEDS = 2048;
 
 /**
  * The range of a (u, v) line on a surface where both directions wrap: from where it
  * enters the window until u and v have each advanced by a whole number of periods, so
  * the lifted curve closes (a torus knot). Slopes that never close are capped at
- * MAX_TURNS in the faster direction. An explicit `range` narrows the result.
+ * MAX_TURNS in the faster direction. An explicit `range` narrows the result. The origin
+ * is first moved by whole periods to the window's corner cell (the same points on the
+ * surface, the same t), so a line written outside the window still enters it.
  */
 function closedLineRange(
   c: Extract<PcurveGeom["curve"], { type: "line" }>,
@@ -56,7 +60,8 @@ function closedLineRange(
   pu: number,
   pv: number,
 ): Range[] {
-  const entry = clipCurve2D(c, { xmin: u[0], xmax: u[1], ymin: v[0], ymax: v[1] })[0];
+  const o: Vec3 = [c.o[0] - Math.floor((c.o[0] - u[0]) / pu) * pu, c.o[1] - Math.floor((c.o[1] - v[0]) / pv) * pv, 0];
+  const entry = clipCurve2D({ ...c, o }, { xmin: u[0], xmax: u[1], ymin: v[0], ymax: v[1] })[0];
   if (!entry) return [];
   const ru = Math.abs(c.d[0]) / pu;
   const rv = Math.abs(c.d[1]) / pv;
@@ -84,8 +89,7 @@ function closedLineRange(
   }
   let hi = entry[0] + advance;
   if (c.range) {
-    const [r0, r1] = c.range[0] <= c.range[1] ? c.range : [c.range[1], c.range[0]];
-    hi = Math.min(hi, r1);
+    hi = Math.min(hi, Math.max(c.range[0], c.range[1]));
   }
   return hi > entry[0] ? [[entry[0], hi]] : [];
 }
@@ -95,7 +99,9 @@ function closedLineRange(
  * (u, v) curve travels in a wrapping direction. Without this, one seed can span a whole
  * number of turns, its midpoint lands on the chord, and sampleAdaptive never refines it —
  * a many-turn helix comes out as a straight line. Line and circle travel is exact (a
- * derivative bound for the circle); polyline travel is summed over its vertices.
+ * derivative bound for the circle); polyline travel is summed over its vertices. At most
+ * MAX_SEEDS (256 turns at full density; tighter windings sample coarser), since an
+ * uncapped count (a pitch of 1e-6 asks for millions) would hang the page.
  */
 export function pcurveSeeds(c: UvCurve, s: SurfaceGeom, a: number, b: number): number {
   const period = periods(s);
@@ -116,7 +122,7 @@ export function pcurveSeeds(c: UvCurve, s: SurfaceGeom, a: number, b: number): n
       if (period.v) tv += Math.abs(q[1] - p[1]) / period.v;
     }
   }
-  return Math.max(16, Math.ceil(Math.max(tu, tv) * SEEDS_PER_TURN));
+  return Math.min(MAX_SEEDS, Math.max(16, Math.ceil(Math.max(tu, tv) * SEEDS_PER_TURN)));
 }
 
 /** The parameter intervals of a pcurve that are drawn: see `uvRanges`; a polyline's whole length, [0, n − 1]. */
