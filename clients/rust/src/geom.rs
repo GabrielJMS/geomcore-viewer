@@ -491,12 +491,15 @@ fn unit(a: Vec3) -> Option<Vec3> {
     (n > 1e-12 && n.is_finite()).then(|| scale(a, 1.0 / n))
 }
 
-/// A (u, v) curve as a pcurve needs it: a line, circle or polyline lying in z = 0.
+/// A (u, v) curve as a pcurve needs it: a line, circle or polyline lying in z = 0, within
+/// the viewer's own tolerance (`inPlaneZ0` in frontend/src/geom/planar.ts), so the client
+/// rejects exactly what the viewer would flag.
 fn in_z0(curve: &Geom) -> bool {
-    let flat = |p: &Vec3| p[2] == 0.0;
+    const EPS: f64 = 1e-9;
+    let flat = |p: &Vec3| p[2].abs() < EPS;
     match curve {
         Geom::Line { o, d, .. } => flat(o) && flat(d),
-        Geom::Circle { frame: f, .. } => flat(&f.o) && f.z[0] == 0.0 && f.z[1] == 0.0,
+        Geom::Circle { frame: f, .. } => flat(&f.o) && f.z[0].abs() < EPS && f.z[1].abs() < EPS,
         Geom::Polyline { points } => points.iter().all(flat),
         _ => false,
     }
@@ -623,5 +626,8 @@ mod tests {
         assert!(pcurve(Geom::line([0.0, 3.0, 0.0], [1.0, 0.0, 0.0])).problem().is_none());
         assert!(pcurve(Geom::circle(flat, 1.0)).problem().is_none());
         assert!(pcurve(Geom::polyline(vec![[0.0; 3], [1.0, 2.0, 0.0]])).problem().is_none());
+        // the viewer's tolerance: rounding noise below 1e-9 passes, 1e-6 does not
+        assert!(pcurve(Geom::polyline(vec![[0.0, 0.0, 1e-15], [1.0, 2.0, -1e-12]])).problem().is_none());
+        assert!(pcurve(Geom::line([0.0, 0.0, 1e-6], [1.0, 0.0, 0.0])).problem().is_some());
     }
 }

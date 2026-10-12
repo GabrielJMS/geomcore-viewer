@@ -6,7 +6,7 @@ use std::f64::consts::{FRAC_PI_2, TAU};
 use std::fmt;
 use std::hash::{BuildHasher, Hasher};
 use std::path::{Path, PathBuf};
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use serde_json::{json, Value};
 
@@ -193,7 +193,7 @@ pub struct Viewer {
     online: bool,
     warned: bool,
     warnings: Vec<String>,
-    last_unanswered: Option<SystemTime>, // a probe that nothing answered: skip re-probing for a while
+    last_unanswered: Option<Instant>, // a probe that nothing answered: skip re-probing for a while
     next_color: usize,
     next_auto: usize,
 }
@@ -467,7 +467,7 @@ impl Viewer {
             return true;
         }
         if let Some(t) = self.last_unanswered {
-            if t.elapsed().is_ok_and(|e| e < PROBE_COOLDOWN) {
+            if t.elapsed() < PROBE_COOLDOWN {
                 return false; // nothing answered a moment ago: keep buffering without another 0.5 s wait
             }
         }
@@ -483,7 +483,7 @@ impl Viewer {
                 self.warn(format!("{} answers but is not a geomcore-viewer v2 server; {keeping}", self.url))
             }
             Probe::Unresponsive => {
-                self.last_unanswered = Some(SystemTime::now());
+                self.last_unanswered = Some(Instant::now());
                 self.warn(format!("{} accepted the connection but did not answer in time; {keeping}", self.url))
             }
             Probe::Nothing => self.warn(format!(
@@ -758,7 +758,6 @@ mod tests {
     #[test]
     fn adds_against_a_server_that_never_answers_do_not_each_wait_out_the_probe() {
         use std::net::TcpListener;
-        use std::time::Instant;
         let hung = TcpListener::bind("127.0.0.1:0").unwrap(); // accepts (backlog) but never replies
         let port = hung.local_addr().unwrap().port();
         let mut v = viewer(port);
