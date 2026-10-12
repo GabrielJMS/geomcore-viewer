@@ -2,7 +2,8 @@ import { describe, expect, it } from "vitest";
 import type { Geom } from "../src/geom/types";
 import type { Frame, Vec2, Vec3 } from "../src/geom/vec";
 import type { SceneObject } from "../src/protocol";
-import { Hit3D, Project, describeHit3D, pickProjected, surfaceUv, uvAt } from "../src/view3d/pick";
+import { uvAt } from "../src/geom/pcurve";
+import { Hit3D, Project, describeHit3D, pickProjected, surfaceUv } from "../src/view3d/pick";
 import type { Pickable3D } from "../src/view3d/render";
 
 const world: Frame = { o: [0, 0, 0], x: [1, 0, 0], y: [0, 1, 0], z: [0, 0, 1] };

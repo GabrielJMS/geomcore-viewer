@@ -1,8 +1,8 @@
 import { evalCurve } from "../geom/curves";
-import { pcurveSurface } from "../geom/pcurve";
+import { pcurveSurface, uvAt } from "../geom/pcurve";
 import { evalSurface } from "../geom/surfaces";
 import type { SurfaceGrid } from "../geom/tessellate";
-import { Geom, UvCurve, isCurve, isPcurve, isSurface } from "../geom/types";
+import { Geom, isCurve, isPcurve, isSurface } from "../geom/types";
 import type { Vec2, Vec3 } from "../geom/vec";
 import type { SceneObject } from "../protocol";
 import { fmtNum, fmtParams, fmtPoint } from "../ui/format";
@@ -83,17 +83,6 @@ export function pickProjected(items: Pickable3D[], project: Project, x: number, 
 /** A surface's (u, v) from the mesh's interpolated texture coordinates (normalized across the grid's window). */
 export function surfaceUv(grid: SurfaceGrid, st: Vec2): Vec2 {
   return [lerp(grid.u[0], grid.u[1], st[0]), lerp(grid.v[0], grid.v[1], st[1])];
-}
-
-/** A (u, v) curve's point at t: the line or circle evaluated, the polyline at i + s along segment i. */
-export function uvAt(c: UvCurve, t: number): Vec2 {
-  if (c.type !== "polyline") {
-    const q = evalCurve(c, t);
-    return [q[0], q[1]];
-  }
-  const i = Math.max(0, Math.min(Math.floor(t), c.points.length - 2));
-  const q = lerp3(c.points[i], c.points[i + 1], t - i);
-  return [q[0], q[1]];
 }
 
 const uvText = (uv: Vec2): string => `u = ${fmtNum(uv[0], 4)} · v = ${fmtNum(uv[1], 4)}`;
