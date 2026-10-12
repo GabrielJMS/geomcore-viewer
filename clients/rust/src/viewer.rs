@@ -20,6 +20,9 @@ pub const DEFAULT_URL: &str = "http://127.0.0.1:8765";
 pub const URL_ENV: &str = "GEOMCORE_VIEWER_URL";
 const PROBE_TIMEOUT: Duration = Duration::from_millis(500);
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(5);
+/// How long a probe that nothing answered suppresses the next one: adds keep
+/// buffering without each waiting out the full timeout again.
+const PROBE_COOLDOWN: Duration = Duration::from_secs(1);
 
 /// Which view the page opens: `Auto` (the plane view when everything lies in z = 0),
 /// `Plane` (2D) or `Space` (3D).
@@ -132,6 +135,7 @@ impl Builder {
             online: false,
             warned: false,
             warnings: Vec::new(),
+            last_unanswered: None,
             next_color: 0,
             next_auto: 0,
         })
@@ -189,6 +193,7 @@ pub struct Viewer {
     online: bool,
     warned: bool,
     warnings: Vec<String>,
+    last_unanswered: Option<SystemTime>, // a probe that nothing answered: skip re-probing for a while
     next_color: usize,
     next_auto: usize,
 }
@@ -413,11 +418,17 @@ impl Viewer {
                 return Ok(());
             }
         }
-        while let Some(id) = self.pending_removals.first().cloned() {
-            if !self.send("DELETE", &format!("/api/objects/{}", encode(&id)), None, true)? {
-                return Ok(());
+        while !self.pending_removals.is_empty() {
+            let id = self.pending_removals.remove(0);
+            match self.send("DELETE", &format!("/api/objects/{}", encode(&id)), None, true)? {
+                true => {}
+                false => {
+                    // Unreachable: put the id back so the delete goes out once the server is back.
+                    // A rejection (Err) already took it off the queue, so it cannot block later ops.
+                    self.pending_removals.insert(0, id);
+                    return Ok(());
+                }
             }
-            self.pending_removals.remove(0);
         }
         if self.unsent.is_empty() {
             return Ok(());
@@ -455,17 +466,24 @@ impl Viewer {
         if self.online {
             return true;
         }
+        if let Some(t) = self.last_unanswered {
+            if t.elapsed().is_ok_and(|e| e < PROBE_COOLDOWN) {
+                return false; // nothing answered a moment ago: keep buffering without another 0.5 s wait
+            }
+        }
         let keeping = "keeping objects locally (save() still works)";
         match http::probe(&self.endpoint, PROBE_TIMEOUT) {
             Probe::Ours => {
                 self.online = true;
                 self.warned = false; // a later outage deserves its own warning
+                self.last_unanswered = None;
             }
             Probe::Refused => self.warn(format!("{}; {keeping}", http::refused_hint(&self.url, self.endpoint.port))),
             Probe::Foreign => {
                 self.warn(format!("{} answers but is not a geomcore-viewer v2 server; {keeping}", self.url))
             }
             Probe::Unresponsive => {
+                self.last_unanswered = Some(SystemTime::now());
                 self.warn(format!("{} accepted the connection but did not answer in time; {keeping}", self.url))
             }
             Probe::Nothing => self.warn(format!(
@@ -714,6 +732,43 @@ mod tests {
         let last = posted(&seen).pop().unwrap();
         assert_eq!(last["objects"].as_array().unwrap().len(), 1);
         assert_eq!(last["objects"][0]["id"], json!("good"));
+    }
+
+    #[test]
+    fn a_rejected_delete_does_not_block_later_adds() {
+        let (port, seen) = stub::serve(|method, path, _| match (method, path) {
+            (_, "/api/health") => (200, r#"{"app": "geomcore-viewer", "protocol": 2}"#.into()),
+            ("DELETE", _) => (500, r#"{"error": "a proxy said no"}"#.into()),
+            _ => (200, "{}".into()),
+        });
+        let mut v = viewer(port);
+        let h = v.add(Geom::point([0.0; 3]), Opts::new().label("A")).unwrap();
+        let err = v.remove(&h).unwrap_err();
+        assert!(matches!(&err, Error::Rejected { status: 500, .. }), "{err}");
+        v.add(Geom::point([1.0; 3]), Opts::new().label("B")).unwrap();
+        assert_eq!(
+            requests(&seen),
+            ["GET /api/health", "POST /api/objects", "DELETE /api/objects/A", "POST /api/objects"]
+        );
+        let last = posted(&seen).pop().unwrap();
+        assert_eq!(last["objects"].as_array().unwrap().len(), 1);
+        assert_eq!(last["objects"][0]["id"], json!("B"));
+    }
+
+    #[test]
+    fn adds_against_a_server_that_never_answers_do_not_each_wait_out_the_probe() {
+        use std::net::TcpListener;
+        use std::time::Instant;
+        let hung = TcpListener::bind("127.0.0.1:0").unwrap(); // accepts (backlog) but never replies
+        let port = hung.local_addr().unwrap().port();
+        let mut v = viewer(port);
+        let start = Instant::now();
+        for i in 0..5 {
+            v.add(Geom::point([i as f64, 0.0, 0.0]), Opts::new()).unwrap();
+        }
+        assert!(start.elapsed() < Duration::from_secs(2), "5 adds took {:?}", start.elapsed());
+        assert_eq!(v.objects().len(), 5);
+        assert_eq!(v.warnings().len(), 1);
     }
 
     #[test]

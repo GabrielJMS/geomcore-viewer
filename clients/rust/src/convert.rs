@@ -17,8 +17,22 @@ use crate::geom::{cross, Frame, Geom, Vec3};
 
 const BSPLINE_SEGMENTS: usize = 256;
 const BSPLINE_GRID: usize = 48;
-/// Where a curve or surface of a kind added to geomcore later is sampled when its bounds are infinite.
+/// Where a curve or surface of a kind added to geomcore later is sampled when a parameter bound is infinite.
 const UNBOUNDED: f64 = 100.0;
+
+/// A parameter bound as-is when finite, else clamped to ±[`UNBOUNDED`].
+fn bound(b: f64, sign: f64) -> f64 {
+    if b.is_finite() {
+        b
+    } else {
+        sign * UNBOUNDED
+    }
+}
+
+fn sample(eval: impl Fn(f64) -> Vec3, (t0, t1): (f64, f64)) -> Geom {
+    let (t0, t1) = (bound(t0, -1.0), bound(t1, 1.0));
+    Geom::polyline((0..=BSPLINE_SEGMENTS).map(|i| eval(t0 + (t1 - t0) * i as f64 / BSPLINE_SEGMENTS as f64)).collect())
+}
 
 fn p3(p: Point3D) -> Vec3 {
     [p.x, p.y, p.z]
@@ -32,15 +46,10 @@ fn frame(f: Frame3D) -> Frame {
     Frame { o: p3(f.origin()), x: v3(f.x_direction()), y: v3(f.y_direction()), z: v3(f.z_direction()) }
 }
 
-fn sample(eval: impl Fn(f64) -> Vec3, (t0, t1): (f64, f64)) -> Geom {
-    let (t0, t1) = (t0.max(-UNBOUNDED), t1.min(UNBOUNDED));
-    Geom::polyline((0..=BSPLINE_SEGMENTS).map(|i| eval(t0 + (t1 - t0) * i as f64 / BSPLINE_SEGMENTS as f64)).collect())
-}
-
 /// An (n + 1)² vertex grid, two triangles per cell.
 fn grid(eval: impl Fn(f64, f64) -> Vec3, (u0, u1): (f64, f64), (v0, v1): (f64, f64)) -> Geom {
     let n = BSPLINE_GRID;
-    let (u0, u1, v0, v1) = (u0.max(-UNBOUNDED), u1.min(UNBOUNDED), v0.max(-UNBOUNDED), v1.min(UNBOUNDED));
+    let (u0, u1, v0, v1) = (bound(u0, -1.0), bound(u1, 1.0), bound(v0, -1.0), bound(v1, 1.0));
     let mut vertices = Vec::with_capacity((n + 1) * (n + 1));
     for i in 0..=n {
         for j in 0..=n {
@@ -350,6 +359,18 @@ mod tests {
         assert_eq!((vertices.len(), indices.len()), ((BSPLINE_GRID + 1).pow(2), 6 * BSPLINE_GRID * BSPLINE_GRID));
         close(s.eval_point(1.0, 1.0), *vertices.last().unwrap());
         assert!(Geom::mesh(vertices, indices).problem().is_none());
+    }
+
+    #[test]
+    fn finite_knot_ranges_are_sampled_whole_not_clamped() {
+        let poles = vec![p(0.0, 0.0, 0.0), p(1.0, 2.0, 0.0), p(3.0, 2.0, 1.0), p(4.0, 0.0, 0.0)];
+        for (k0, k1) in [(0.0, 350.0), (200.0, 300.0)] {
+            let c = BSplineCurve3D::new(3, poles.clone(), vec![k0, k1], vec![4, 4], false).unwrap();
+            let Geom::Polyline { points } = Geom::from(&c) else { panic!() };
+            assert_eq!(points.len(), BSPLINE_SEGMENTS + 1);
+            close(c.eval_point(k0), points[0]);
+            close(c.eval_point(k1), points[BSPLINE_SEGMENTS]);
+        }
     }
 
     #[test]

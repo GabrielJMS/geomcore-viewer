@@ -290,7 +290,13 @@ impl Geom {
                     .then(|| "mesh.indices must be triangles indexing vertices".into())
             }
             Geom::Pcurve { curve, .. } => match **curve {
-                Geom::Line { .. } | Geom::Circle { .. } | Geom::Polyline { .. } => curve.problem(),
+                Geom::Line { .. } | Geom::Circle { .. } | Geom::Polyline { .. } => {
+                    if !in_z0(curve) {
+                        Some("pcurve.curve must lie in z = 0 (x is u, y is v)".into())
+                    } else {
+                        curve.problem()
+                    }
+                }
                 _ => Some(format!("a pcurve is a line, circle or polyline in (u, v), got {}", curve.kind())),
             },
             _ => None,
@@ -485,6 +491,17 @@ fn unit(a: Vec3) -> Option<Vec3> {
     (n > 1e-12 && n.is_finite()).then(|| scale(a, 1.0 / n))
 }
 
+/// A (u, v) curve as a pcurve needs it: a line, circle or polyline lying in z = 0.
+fn in_z0(curve: &Geom) -> bool {
+    let flat = |p: &Vec3| p[2] == 0.0;
+    match curve {
+        Geom::Line { o, d, .. } => flat(o) && flat(d),
+        Geom::Circle { frame: f, .. } => flat(&f.o) && f.z[0] == 0.0 && f.z[1] == 0.0,
+        Geom::Polyline { points } => points.iter().all(flat),
+        _ => false,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -587,5 +604,24 @@ mod tests {
         assert_eq!(bad.problem().unwrap(), "a pcurve is a line, circle or polyline in (u, v), got ellipse");
         assert!(Geom::cone(F, 0.5, -1.0).problem().is_none(), "a cone's ref_radius may be negative");
         assert!(Geom::sphere(F, 1.0).window(Some([0.0, f64::INFINITY]), None).problem().is_some());
+    }
+
+    #[test]
+    fn a_pcurve_must_lie_in_z0() {
+        let flat = Frame::WORLD;
+        let tilted = Frame { o: [0.0; 3], x: [1.0, 0.0, 0.0], y: [0.0, 0.0, 1.0], z: [0.0, -1.0, 0.0] };
+        let high = Frame::at([0.0, 0.0, 5.0]);
+        let pcurve = |curve| Geom::Pcurve { surface: "S".into(), curve: Box::new(curve) };
+        for bad in [
+            pcurve(Geom::line([0.0; 3], [0.0, 0.0, 1.0])),
+            pcurve(Geom::circle(tilted, 1.0)),
+            pcurve(Geom::circle(high, 1.0)),
+            pcurve(Geom::polyline(vec![[0.0, 0.0, 5.0], [1.0, 1.0, 5.0]])),
+        ] {
+            assert_eq!(bad.problem().unwrap(), "pcurve.curve must lie in z = 0 (x is u, y is v)");
+        }
+        assert!(pcurve(Geom::line([0.0, 3.0, 0.0], [1.0, 0.0, 0.0])).problem().is_none());
+        assert!(pcurve(Geom::circle(flat, 1.0)).problem().is_none());
+        assert!(pcurve(Geom::polyline(vec![[0.0; 3], [1.0, 2.0, 0.0]])).problem().is_none());
     }
 }
