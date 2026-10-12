@@ -85,4 +85,12 @@ describe("dashPolyline", () => {
   it("gives nothing for a single point", () => {
     expect(dashPolyline([[1, 1]], 6, 4)).toEqual([]);
   });
+
+  it("dashes a 3D polyline by its length in space", () => {
+    const dashes = dashPolyline<[number, number, number]>([[0, 0, 0], [0, 3, 4]], 1, 1.5);
+    expect(dashes).toHaveLength(2);
+    const close = (p: number[], q: number[]) => p.forEach((x, i) => expect(x).toBeCloseTo(q[i], 12));
+    close(dashes[0][1], [0, 0.6, 0.8]); // 1 along the 3-4-5 segment
+    close(dashes[1][0], [0, 1.5, 2]); // the second dash starts 1 + 1.5 along
+  });
 });

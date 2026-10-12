@@ -64,26 +64,28 @@ export function sampleAdaptive<P extends number[] = Vec2>(
   return { pts, ts };
 }
 
+const dist = (a: number[], b: number[]): number => Math.hypot(...a.map((x, i) => b[i] - x));
+
 /**
- * Dashes along a polyline: `dash` pixels drawn, `gap` skipped, repeating across corners.
- * Returns the line solid when it would take more than `maxDashes` dashes.
+ * Dashes along a polyline, in 2D (pixels) or 3D (world units): `dash` drawn, `gap` skipped,
+ * repeating across corners. Returns the line solid when it would take more than `maxDashes` dashes.
  */
-export function dashPolyline(pts: Vec2[], dash: number, gap: number, maxDashes = 5000): Vec2[][] {
+export function dashPolyline<P extends number[] = Vec2>(pts: P[], dash: number, gap: number, maxDashes = 5000): P[][] {
   if (pts.length < 2) return [];
   let total = 0;
-  for (let i = 1; i < pts.length; i++) total += Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]);
+  for (let i = 1; i < pts.length; i++) total += dist(pts[i - 1], pts[i]);
   if (!(dash > 0 && gap > 0) || total / (dash + gap) > maxDashes) return [pts];
-  const out: Vec2[][] = [];
+  const out: P[][] = [];
   let on = true;
-  let left = dash; // pixels left in the current dash or gap
-  let current: Vec2[] = [pts[0]];
+  let left = dash; // length left in the current dash or gap
+  let current: P[] = [pts[0]];
   for (let i = 1; i < pts.length; i++) {
     let a = pts[i - 1];
     const b = pts[i];
-    let seg = Math.hypot(b[0] - a[0], b[1] - a[1]);
+    let seg = dist(a, b);
     while (seg > left) {
       const s = left / seg;
-      const cut: Vec2 = [a[0] + (b[0] - a[0]) * s, a[1] + (b[1] - a[1]) * s];
+      const cut = a.map((x, k) => x + (b[k] - x) * s) as P;
       if (on) {
         current.push(cut);
         out.push(current);
