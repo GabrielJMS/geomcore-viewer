@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { liftPcurve, pcurveSurface } from "../src/geom/pcurve";
+import { liftPcurve, pcurveRanges, pcurveSurface } from "../src/geom/pcurve";
 import { evalSurface } from "../src/geom/surfaces";
 import type { Geom, PcurveGeom, SurfaceGeom } from "../src/geom/types";
 import { Box, Frame } from "../src/geom/vec";
@@ -55,5 +55,31 @@ describe("liftPcurve", () => {
 
   it("draws nothing for a (u, v) line that misses the window", () => {
     expect(liftPcurve(on({ type: "line", o: [0, 9, 0], d: [1, 0, 0] }), cylinder, box)).toEqual([]);
+  });
+
+  it("samples a 32-turn helix finely instead of a straight line", () => {
+    // One seed per 16-segment start would span two whole turns here, its midpoint landing
+    // on the chord, so the midpoint test alone would never refine it.
+    const s = 7 / (32 * 2 * Math.PI);
+    const [piece, ...rest] = liftPcurve(on({ type: "line", o: [0, 0, 0], d: [1, s, 0] }), cylinder, box);
+    expect(rest).toEqual([]);
+    expect(piece.pts.length).toBeGreaterThan(500);
+    let length = 0;
+    for (let i = 1; i < piece.pts.length; i++) {
+      length += Math.hypot(piece.pts[i][0] - piece.pts[i - 1][0], piece.pts[i][1] - piece.pts[i - 1][1], piece.pts[i][2] - piece.pts[i - 1][2]);
+    }
+    expect(length).toBeGreaterThan(300); // 32 turns at r = 2 run ~402; a straight chord would be < 12
+  });
+
+  it("closes a diagonal line where both directions wrap instead of leaving a gap", () => {
+    const torus: SurfaceGeom = { type: "torus", frame: world, R: 3, r: 1 };
+    const g = on({ type: "line", o: [1, 0, 0], d: [1, 1, 0] }); // u = v + 1
+    const [range, ...rest] = pcurveRanges(g, torus, box);
+    expect(rest).toEqual([]);
+    expect(range[1] - range[0]).toBeCloseTo(2 * Math.PI, 9);
+    const [piece] = liftPcurve(g, torus, box);
+    const first = piece.pts[0];
+    const last = piece.pts[piece.pts.length - 1];
+    expect(Math.hypot(last[0] - first[0], last[1] - first[1], last[2] - first[2])).toBeLessThan(0.05);
   });
 });

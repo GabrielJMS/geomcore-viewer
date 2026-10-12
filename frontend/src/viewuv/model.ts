@@ -1,5 +1,5 @@
 import { halfSize } from "../geom/bounds";
-import { pcurveRanges, uvAt } from "../geom/pcurve";
+import { pcurveRanges, pcurveSeeds, uvAt } from "../geom/pcurve";
 import { sampleAdaptive } from "../geom/sample";
 import { periods, surfaceWindow } from "../geom/surfaces";
 import { Range, SurfaceGeom, isPcurve, isSurface } from "../geom/types";
@@ -111,7 +111,7 @@ export function uvModel(objects: Iterable<SceneObject>, subject: SceneObject, bo
   for (const o of objects) {
     const g = o.geom;
     if (!isPcurve(g) || g.surface !== subject.id || !visible(o)) continue;
-    let paths = pcurveRanges(g, geom, box).map(([a, b]) => sampleAdaptive((t) => uvAt(g.curve, t), a, b, tol).pts);
+    let paths = pcurveRanges(g, geom, box).map(([a, b]) => sampleAdaptive((t) => uvAt(g.curve, t), a, b, tol, 4096, pcurveSeeds(g.curve, geom, a, b)).pts);
     if (period.u) paths = paths.flatMap((p) => wrapAxis(p, 0, u[0], period.u!));
     if (period.v) paths = paths.flatMap((p) => wrapAxis(p, 1, v[0], period.v!));
     curves.push({ id: o.id, label: o.label ?? o.id, color: colorOf(o), dashed: Boolean(o.style?.dashed), paths });

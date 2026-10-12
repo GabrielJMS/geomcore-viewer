@@ -90,6 +90,7 @@ export class UvPane {
 
   private draw(): void {
     const subject = this.active && this.ui.uvPane ? uvSubject(this.store.objects, this.ui.selected) : null;
+    if (this.link.current?.from === "uv" && (!subject || this.link.current.surface !== subject.id)) this.link.set(null);
     this.root.hidden = !subject;
     if (!subject || !this.ctx) {
       this.model = null;

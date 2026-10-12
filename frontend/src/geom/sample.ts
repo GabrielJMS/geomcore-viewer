@@ -29,10 +29,12 @@ export function segmentDistance(p: number[], a: number[], b: number[]): number {
 }
 
 /**
- * Polyline of `f` over [t0, t1]: 16 even segments, each halved until the curve's midpoint
- * is within `tol` of the chord, with at most `maxPoints` points in all. The plane view
- * samples in screen pixels (spec §5.2: chord error ≤ 0.25 px, segments capped), the 3D view
- * in world units. Conics have no inflection, so the midpoint test bounds the whole arc.
+ * Polyline of `f` over [t0, t1]: `seedSegments` even segments, each halved until the
+ * curve's midpoint is within `tol` of the chord, with at most `maxPoints` points in
+ * all. The plane view samples in screen pixels (spec §5.2: chord error ≤ 0.25 px,
+ * segments capped), the 3D view in world units. Conics have no inflection, so the
+ * midpoint test bounds the whole arc; callers whose curve can wind whole turns inside
+ * one seed (a lifted pcurve) pass more seeds (see `pcurveSeeds`).
  */
 export function sampleAdaptive<P extends number[] = Vec2>(
   f: (t: number) => P,
@@ -40,10 +42,11 @@ export function sampleAdaptive<P extends number[] = Vec2>(
   t1: number,
   tol = 0.25,
   maxPoints = 4096,
+  seedSegments = SEED_SEGMENTS,
 ): Sampled<P> {
   const pts: P[] = [f(t0)];
   const ts: number[] = [t0];
-  let budget = maxPoints - SEED_SEGMENTS - 1;
+  let budget = maxPoints - seedSegments - 1;
   const refine = (a: number, pa: P, b: number, pb: P, depth: number): void => {
     const m = (a + b) / 2;
     const pm = f(m);
@@ -56,9 +59,9 @@ export function sampleAdaptive<P extends number[] = Vec2>(
       ts.push(b);
     }
   };
-  for (let i = 0; i < SEED_SEGMENTS; i++) {
+  for (let i = 0; i < seedSegments; i++) {
     const a = ts[ts.length - 1];
-    const b = i + 1 === SEED_SEGMENTS ? t1 : t0 + ((t1 - t0) * (i + 1)) / SEED_SEGMENTS;
+    const b = i + 1 === seedSegments ? t1 : t0 + ((t1 - t0) * (i + 1)) / seedSegments;
     refine(a, pts[pts.length - 1], b, f(b), 0);
   }
   return { pts, ts };

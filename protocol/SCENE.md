@@ -87,8 +87,11 @@ Radii (`r`, `a`, `b`, `R`) must be positive and `f` non-zero.
   to it in the directions that do not wrap, so a helix on a cylinder winds
   round the seam until it leaves the v window; one those leave unbounded
   (the line v = 3 a circle gives on a cylinder) is clipped to the whole
-  window, one turn. A `polyline` is drawn whole, point to point on the
-  surface. `range` is ignored. A pcurve adds nothing to the view box, and
+   window, one turn. Where both directions wrap (a torus), a line runs from
+   where it enters the window until u and v have each advanced by a whole
+   number of periods, so it closes. A `polyline` is drawn whole, point to point on the
+   surface. `range` on the (u, v) line or circle narrows what is drawn, as
+   for other curves; a `polyline` ignores it. A pcurve adds nothing to the view box, and
   while its `surface` names no surface it is kept but not drawn, and the
   panel flags it.
 
