@@ -29,7 +29,7 @@ export class View3D {
   constructor(
     private store: Store,
     private ui: UiState,
-    canvas: HTMLCanvasElement,
+    private canvas: HTMLCanvasElement,
   ) {
     this.engine = new BABYLON.Engine(canvas, true);
     this.scene = new BABYLON.Scene(this.engine);
@@ -109,8 +109,9 @@ export class View3D {
     }
   }
 
+  /** Babylon's own size never reads 0 (resize() falls back to a default), so ask the element. */
   private laidOut(): boolean {
-    return this.engine.getRenderWidth() > 0 && this.engine.getRenderHeight() > 0;
+    return this.canvas.clientWidth > 0 && this.canvas.clientHeight > 0;
   }
 
   private uiChanged(ev: UiEvent): void {
@@ -125,8 +126,7 @@ export class View3D {
       // The radius depends on the pane's aspect ratio: a hidden or unsized canvas would get a wrong one, so wait for a flush.
       if (this.active && this.laidOut()) this.frameSelected();
       else this.framePending = true;
-    }
-    else if (ev === "autofit" && this.ui.autoFit) this.fitRequested();
+    } else if (ev === "autofit" && this.ui.autoFit) this.fitRequested();
   }
 
   private applyTheme(): void {
