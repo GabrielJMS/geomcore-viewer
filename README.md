@@ -109,6 +109,14 @@ surface of the selected pcurve, or of the first pcurve in the scene): its
 window, seams and the pcurves on it. Hovering it puts a marker on the
 surface in 3D; hovering the surface or a pcurve in 3D puts one in the pane.
 
+## Rust
+
+`clients/rust` is the same client for Rust programs: `Viewer::add`, labels,
+groups, runs and surface windows work as in Python, and with the `geomcore`
+cargo feature geomcore's curves, surfaces, points and `parametrize_on` results
+go straight to `add`. Rust never starts the server: run
+`python -m geomcore_viewer serve` once. See [clients/rust/README.md](clients/rust/README.md).
+
 ## Layout
 
 | Path | What |
@@ -116,8 +124,8 @@ surface in 3D; hovering the surface or a pcurve in 3D puts one in the pane.
 | `protocol/SCENE.md` | protocol v2: the JSON every client and the viewer speak |
 | `python/geomcore_viewer/` | client (`viewer.py`), geomcore adapter (`adapt.py`), server (`server.py`, `spawn.py`) |
 | `frontend/` | Vite + TypeScript viewer (Babylon.js 3D, PixiJS 2D); `src/geom/` is the evaluator core, `src/view2d/` the plane view, `src/view3d/` the 3D view, `src/viewuv/` the (u,v) pane |
-| `clients/rust/` | Rust client (protocol v1 until phase 4 of the v2 plan) |
-| `examples/` | `conics_2d.py`, `quadrics_3d.py`, `pcurve.py` (each takes `--save <file>`) |
+| `clients/rust/` | Rust client: `Viewer`, `Geom`, geomcore conversions behind the `geomcore` feature ([README](clients/rust/README.md)) |
+| `examples/` | `conics_2d.py`, `quadrics_3d.py`, `pcurve.py` (each takes `--save <file>`); Rust: `clients/rust/examples/` |
 
 ## Development
 
@@ -128,6 +136,8 @@ cd frontend && npm ci && npm test && npm run build && cd ..
 cd frontend && npx playwright install chromium && npm run e2e && cd ..   # browser tests (port 8797)
 scripts/bundle-frontend.sh          # copy the build into the Python package
 scripts/refresh-fixtures.sh         # re-vendor geomcore's golden fixtures
+(cd clients/rust && cargo test --features geomcore)   # Rust client
+scripts/rust-live-check.sh 8797     # Rust examples against a real server
 ```
 
 ## Live demo

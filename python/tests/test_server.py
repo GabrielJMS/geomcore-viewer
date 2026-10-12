@@ -96,9 +96,13 @@ def test_rejects_malformed_bodies(server):
     assert err.value.code == 400
 
 
-def test_v1_add_still_accepted(server):
-    _send(f"{server.url}/api/add", {"id": "c", "kind": "curve3d", "points": [[0, 0, 0], [1, 0, 0]]})
-    assert _get(f"{server.url}/api/scene")["objects"][0]["kind"] == "curve3d"
+def test_v1_is_gone_from_the_server(server):
+    with pytest.raises(urllib.error.HTTPError) as err:
+        _send(f"{server.url}/api/add", {"id": "c", "kind": "curve3d", "points": [[0, 0, 0], [1, 0, 0]]})
+    assert err.value.code == 404
+    with pytest.raises(urllib.error.HTTPError) as err:
+        _send(f"{server.url}/api/objects", {"objects": [{"id": "c", "kind": "curve3d", "points": [[0, 0, 0]]}]})
+    assert err.value.code == 400
 
 
 def _listen(server, count, events, ready):

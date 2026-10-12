@@ -77,9 +77,7 @@ def _valid_object(obj: object) -> bool:
     if not isinstance(obj, dict) or not isinstance(obj.get("id"), str):
         return False
     geom = obj.get("geom")
-    if isinstance(geom, dict) and isinstance(geom.get("type"), str):
-        return True
-    return isinstance(obj.get("kind"), str)  # v1 entity; the frontend migrates it
+    return isinstance(geom, dict) and isinstance(geom.get("type"), str)
 
 
 class _State:
@@ -262,11 +260,6 @@ def make_handler(frontend_dir: Path, state: _State) -> type[BaseHTTPRequestHandl
                     self._send_json({"error": 'expected {"objects": [...]}, each with a string id and geom.type'}, 400)
                     return
                 state.post(body)
-            elif path == "/api/add":
-                if not _valid_object(body):
-                    self._send_json({"error": "entity needs a string id and kind"}, 400)
-                    return
-                state.post({"objects": [body]})
             elif path == "/api/clear":
                 state.clear()
             elif path == "/api/shutdown":
