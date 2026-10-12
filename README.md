@@ -70,15 +70,17 @@ variable counts as unset. A URL without a port means port 80, as `http://`
 says. `geomcore-viewer serve` and `stop` take their default port from the same
 variable; `--port` overrides it.
 
-The server only answers requests addressed to its own `127.0.0.1:<port>` (a
-browser safety rule), so to watch a remote machine's viewer through SSH keep
-the same port on both ends: `ssh -L 8765:127.0.0.1:8765 <host>`, then open
-`http://127.0.0.1:8765`.
+The server only answers requests addressed to its own `127.0.0.1:<port>` or
+`localhost:<port>` (a browser safety rule), so to watch a remote machine's
+viewer through SSH keep the same port on both ends:
+`ssh -L 8765:127.0.0.1:8765 <host>`, then open `http://127.0.0.1:8765`.
 
 ## The page
 
 The view shows the plane z = 0 when every object lies in it, else 3D; the
-header's 2D/3D switch (or the scene's `view`) overrides that.
+header's 2D/3D switch (or the scene's `view`) overrides that. A view that cannot
+start (for example 3D without WebGL) has its 2D/3D button disabled, the `2`/`3`
+keys do nothing for it, and the failure stays in the header's status line.
 
 | Key | Does |
 |---|---|

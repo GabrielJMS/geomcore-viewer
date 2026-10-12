@@ -24,6 +24,10 @@ const strokeSpan = (page: Page, id: string) =>
     return { n: pts.length, minX: Math.min(...xs), maxX: Math.max(...xs), minY: Math.min(...ys), maxY: Math.max(...ys), w: c.width, h: c.height };
   }, id);
 
+/** Two animation frames: whatever a camera change scheduled has been drawn. */
+const nextFrame = (page: Page) =>
+  page.evaluate(() => new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r()))));
+
 const point = (id: string, x: number, y: number, group?: string) => ({
   id,
   label: id,
@@ -48,10 +52,12 @@ test("the sample scene renders in the plane view", async ({ page }) => {
 test("zooming far out keeps line L spanning the view", async ({ page }) => {
   await page.goto("/?scene=sample-scene.json");
   await expect(page.locator("#count")).toHaveText("12 objects");
+  await expect(page.locator(".labels .label", { hasText: "P₁ (2.994, -0.123)" })).toBeVisible(); // the sample is drawn
   const box = (await page.locator("#view2d").boundingBox())!;
   await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
   for (let i = 0; i < 8; i++) await page.mouse.wheel(0, 1500);
   await expect.poll(async () => (await camera(page)).scale).toBeLessThan(1);
+  await nextFrame(page); // strokesOf reads the last drawn frame, so wait for the zoomed one
   await expect
     .poll(async () => {
       const s = await strokeSpan(page, "L");
@@ -65,6 +71,7 @@ test("a re-run swaps the scene but keeps the camera and hidden groups", async ({
   await page.goto("/");
   await expect(page.locator("#title")).toHaveText("first");
   await expect(page.locator("#run")).toHaveText("run 1");
+  await expect(page.locator(".labels .label", { hasText: /^A / })).toBeVisible(); // drawn, so the camera is fitted
   const fitted = await camera(page);
   const box = (await page.locator("#view2d").boundingBox())!;
   await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
@@ -96,5 +103,6 @@ test("T switches the theme, P presents and Esc leaves", async ({ page }) => {
   await page.keyboard.press("Escape");
   await expect(page.locator("#chrome")).toBeVisible();
   await page.keyboard.press("Control+t"); // a browser shortcut, not the viewer's T
+  await nextFrame(page);
   await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
 });
