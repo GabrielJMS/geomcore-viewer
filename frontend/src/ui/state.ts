@@ -3,6 +3,14 @@ import type { SceneObject, ViewMode } from "../protocol";
 import type { Theme } from "./theme";
 
 export type ActiveView = "2d" | "3d";
+export type AvailableViews = Record<ActiveView, boolean>;
+
+/** `view` if it can be shown, else the other one (a dead pane explains nothing); `view` when neither can. */
+export function usableView(view: ActiveView, available: AvailableViews): ActiveView {
+  const other: ActiveView = view === "2d" ? "3d" : "2d";
+  return !available[view] && available[other] ? other : view;
+}
+
 export type UiEvent = "theme" | "presenting" | "view" | "visibility" | "selection" | "autofit" | "collapse";
 
 /** The part of `Storage` the UI needs (tests pass a Map-backed fake). */

@@ -49,18 +49,27 @@ export interface HeaderElements {
   count: HTMLElement;
 }
 
-/** Status lines that report a failure (store.ts, view2d/view.ts, main.ts). */
+/** Status lines that report a failure (store.ts, main.ts). View failures are passed separately to `statusLine`. */
 const FAILURE = /fail|error|could not|unsupported|unavailable/i;
 
 export const statusState = (status: string): "live" | "error" | "" =>
   status === "live" ? "live" : FAILURE.test(status) ? "error" : "";
 
-export function renderHeader(store: Store, runs: RunCounter, els: HeaderElements): void {
+/** The status text: the store's status, then the view failures (which stay until the page is reloaded). */
+export function statusLine(status: string, failures: readonly string[]): { text: string; state: "live" | "error" | "" } {
+  return {
+    text: [status, ...failures].filter(Boolean).join(" · "),
+    state: failures.length ? "error" : statusState(status),
+  };
+}
+
+export function renderHeader(store: Store, runs: RunCounter, els: HeaderElements, failures: readonly string[] = []): void {
   const m = headerModel(store, runs);
   els.title.textContent = m.title;
   document.title = store.title ? `${store.title} · geomcore-viewer` : "geomcore-viewer";
-  els.status.textContent = store.status;
-  els.status.dataset.state = statusState(store.status);
+  const status = statusLine(store.status, failures);
+  els.status.textContent = status.text;
+  els.status.dataset.state = status.state;
   els.run.textContent = m.run;
   els.count.textContent = m.count;
 }

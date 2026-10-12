@@ -4,7 +4,7 @@ import { Store } from "./store";
 import { RunCounter, renderHeader } from "./ui/header";
 import { mountKeys } from "./ui/keys";
 import { mountPanel } from "./ui/panel";
-import { UiState } from "./ui/state";
+import { type ActiveView, type AvailableViews, UiState, usableView } from "./ui/state";
 import { applyTheme } from "./ui/theme";
 import { View2D } from "./view2d/view";
 import { View3D } from "./view3d";
@@ -29,15 +29,27 @@ function toast(message: string): void {
   toastTimer = setTimeout(() => (toastEl.hidden = true), 2500);
 }
 
-// A machine without WebGL still gets the plane view and the panel.
+// A view that cannot start is recorded here and shown in the header, not toasted or overwritten
+// by the next status. The other view and the panel keep working (a machine without WebGL gets
+// the plane view only).
+const failures: string[] = [];
+const available: AvailableViews = { "2d": true, "3d": true };
+function viewFailed(view: ActiveView, message: string): void {
+  available[view] = false;
+  failures.push(message);
+}
+
 let view3d: View3D | null = null;
 try {
   view3d = new View3D(store, ui, byId<HTMLCanvasElement>("canvas3d"));
 } catch (err) {
   console.error("geomcore-viewer: 3D view failed", err);
-  store.setStatus(`3D view unavailable: ${err instanceof Error ? err.message : String(err)}`);
+  viewFailed("3d", `3D view unavailable: ${err instanceof Error ? err.message : String(err)}`);
 }
-const view2d = new View2D(store, ui, byId("view2d"), toast);
+const view2d = new View2D(store, ui, byId("view2d"), toast, (message) => {
+  viewFailed("2d", message);
+  shell.request(); // init finishes after the first render
+});
 mountPanel(store, ui, byId("object-list"));
 
 const runs = new RunCounter();
@@ -45,9 +57,11 @@ const header = { title: byId("title"), status: byId("status"), run: byId("run"),
 const stage = byId("stage");
 const autofit = byId<HTMLInputElement>("autofit");
 const shell = new FrameScheduler(() => {
-  renderHeader(store, runs, header);
-  const view = ui.activeView(store.view, store.objects.values());
+  renderHeader(store, runs, header, failures);
+  const view = usableView(ui.activeView(store.view, store.objects.values()), available);
   stage.dataset.view = view;
+  byId<HTMLButtonElement>("view-2d").disabled = !available["2d"];
+  byId<HTMLButtonElement>("view-3d").disabled = !available["3d"];
   byId("view-2d").setAttribute("aria-pressed", String(view === "2d"));
   byId("view-3d").setAttribute("aria-pressed", String(view === "3d"));
   byId("present").setAttribute("aria-pressed", String(ui.presenting));
@@ -72,8 +86,11 @@ const present = () => {
   if (ui.presenting) toast("presentation mode · Esc to leave");
 };
 byId("fit").addEventListener("click", fit);
-byId("view-2d").addEventListener("click", () => ui.setView("2d"));
-byId("view-3d").addEventListener("click", () => ui.setView("3d"));
+const chooseView = (view: ActiveView) => {
+  if (available[view]) ui.setView(view);
+};
+byId("view-2d").addEventListener("click", () => chooseView("2d"));
+byId("view-3d").addEventListener("click", () => chooseView("3d"));
 byId("theme").addEventListener("click", () => ui.toggleTheme());
 byId("present").addEventListener("click", present);
 autofit.addEventListener("change", () => ui.setAutoFit(autofit.checked)); // turning it on refits both views
@@ -82,8 +99,8 @@ mountKeys({
   fit,
   present,
   theme: () => ui.toggleTheme(),
-  view2d: () => ui.setView("2d"),
-  view3d: () => ui.setView("3d"),
+  view2d: () => chooseView("2d"),
+  view3d: () => chooseView("3d"),
   escape: () => (ui.presenting ? ui.setPresenting(false) : ui.select(null)),
 });
 

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { Store } from "../src/store";
-import { RunCounter, headerModel, objectCount, plural, statusState } from "../src/ui/header";
+import { RunCounter, headerModel, objectCount, plural, statusLine, statusState } from "../src/ui/header";
 import type { SceneObject } from "../src/protocol";
 
 const obj = (id: string, geom: unknown) => ({ id, geom }) as SceneObject;
@@ -39,5 +39,15 @@ describe("header", () => {
     expect(statusState("clear failed: the server answered HTTP 415")).toBe("error");
     expect(statusState("could not load x.json (HTTP 404)")).toBe("error");
     expect(statusState("live: unsupported scene version 9 (this viewer reads 1 and 2)")).toBe("error");
+  });
+
+  it("keeps a recorded view failure visible and marks the status as an error", () => {
+    expect(statusLine("live", [])).toEqual({ text: "live", state: "live" });
+    expect(statusLine("live", ["3D view unavailable: no WebGL"])).toEqual({
+      text: "live · 3D view unavailable: no WebGL",
+      state: "error",
+    });
+    expect(statusLine("static: a.json", ["2D view failed: x"]).state).toBe("error");
+    expect(statusLine("", ["3D view unavailable: no WebGL"]).text).toBe("3D view unavailable: no WebGL");
   });
 });

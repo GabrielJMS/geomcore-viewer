@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import type { SceneObject } from "../src/protocol";
-import { KeyValueStore, UiState, autoView } from "../src/ui/state";
+import { KeyValueStore, UiState, autoView, usableView } from "../src/ui/state";
 
 function memory(initial: Record<string, string> = {}): KeyValueStore & { data: Map<string, string> } {
   const data = new Map(Object.entries(initial));
@@ -85,5 +85,14 @@ describe("UiState visibility and selection", () => {
     expect(seen.mock.calls.map((c) => c[0])).toEqual(["selection", "presenting", "autofit", "collapse"]);
     expect(ui.selected).toBe("a");
     expect(ui.collapsedGroups.has("g")).toBe(true);
+  });
+});
+
+describe("usableView", () => {
+  it("falls back to the available view, and never leaves the choice when both or neither work", () => {
+    expect(usableView("3d", { "2d": true, "3d": false })).toBe("2d");
+    expect(usableView("2d", { "2d": false, "3d": true })).toBe("3d");
+    expect(usableView("3d", { "2d": true, "3d": true })).toBe("3d");
+    expect(usableView("3d", { "2d": false, "3d": false })).toBe("3d");
   });
 });

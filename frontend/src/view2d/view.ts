@@ -45,6 +45,8 @@ export class View2D {
     private ui: UiState,
     private host: HTMLElement,
     private notify: (message: string) => void,
+    /** Where the init failure goes (it must outlive a toast); defaults to `notify`. */
+    private onFailure: (message: string) => void = notify,
   ) {
     this.labels = new LabelLayer(host);
     this.tooltip = document.createElement("div");
@@ -74,7 +76,7 @@ export class View2D {
       })
       .catch((err: unknown) => {
         console.error("geomcore-viewer: 2D view failed", err);
-        notify(`2D view failed: ${err instanceof Error ? err.message : String(err)}`);
+        onFailure(`2D view failed: ${err instanceof Error ? err.message : String(err)}`);
       });
   }
 
