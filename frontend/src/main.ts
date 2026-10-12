@@ -101,6 +101,7 @@ mountKeys({
   theme: () => ui.toggleTheme(),
   view2d: () => chooseView("2d"),
   view3d: () => chooseView("3d"),
+  uvpane: () => ui.toggleUvPane(),
   escape: () => (ui.presenting ? ui.setPresenting(false) : ui.select(null)),
 });
 

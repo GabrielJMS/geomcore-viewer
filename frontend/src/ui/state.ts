@@ -11,7 +11,7 @@ export function usableView(view: ActiveView, available: AvailableViews): ActiveV
   return !available[view] && available[other] ? other : view;
 }
 
-export type UiEvent = "theme" | "presenting" | "view" | "visibility" | "selection" | "autofit" | "collapse";
+export type UiEvent = "theme" | "presenting" | "view" | "visibility" | "selection" | "autofit" | "collapse" | "uvpane";
 
 /** The part of `Storage` the UI needs (tests pass a Map-backed fake). */
 export interface KeyValueStore {
@@ -50,6 +50,8 @@ export class UiState {
   theme: Theme;
   presenting = false;
   autoFit = true;
+  /** Spec §5.4: the (u,v) pane shows when the scene has something for it; U hides it (and brings it back). */
+  uvPane = true;
   viewOverride: ActiveView | null = null;
   selected: string | null = null;
   readonly hiddenIds = new Set<string>();
@@ -100,6 +102,11 @@ export class UiState {
   setAutoFit(on: boolean): void {
     this.autoFit = on;
     this.emit("autofit");
+  }
+
+  toggleUvPane(): void {
+    this.uvPane = !this.uvPane;
+    this.emit("uvpane");
   }
 
   setView(view: ActiveView): void {
