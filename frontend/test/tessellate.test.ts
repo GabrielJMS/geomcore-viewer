@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { arrowPolylines, tessellateCurve, tessellateSurface } from "../src/geom/tessellate";
+import { segmentDistance } from "../src/geom/sample";
+import { arrowPolylines, curvePieces, tessellateSurface } from "../src/geom/tessellate";
+import { evalCurve } from "../src/geom/curves";
 import { halfSize, sameBox, sceneBounds, viewBox } from "../src/geom/bounds";
 import { inPlaneZ0 } from "../src/geom/planar";
 import type { Geom } from "../src/geom/types";
@@ -8,18 +10,28 @@ import { Frame } from "../src/geom/vec";
 const world: Frame = { o: [0, 0, 0], x: [1, 0, 0], y: [0, 1, 0], z: [0, 0, 1] };
 const tilted: Frame = { o: [0, 0, 0], x: [1, 0, 0], y: [0, 0, 1], z: [0, -1, 0] };
 
-describe("tessellateCurve", () => {
-  it("samples a closed circle from t=0 to 2π", () => {
-    const pts = tessellateCurve({ type: "circle", frame: world, r: 2 }, viewBox([]), 8);
-    expect(pts).toHaveLength(9);
-    expect(pts[0][0]).toBeCloseTo(2);
-    expect(pts[8][0]).toBeCloseTo(2);
+describe("curvePieces", () => {
+  it("draws a closed circle once round, from t = 0 to 2π, within the tolerance", () => {
+    const g = { type: "circle", frame: world, r: 2 } as const;
+    const [piece, ...rest] = curvePieces(g, viewBox([]));
+    expect(rest).toEqual([]);
+    expect(piece.ts[0]).toBe(0);
+    expect(piece.ts[piece.ts.length - 1]).toBeCloseTo(2 * Math.PI, 12);
+    const tol = 5e-4 * 5; // WORLD_TOL × the half-size of the ±5 box
+    for (let i = 0; i + 1 < piece.pts.length; i++) {
+      const p = evalCurve(g, (piece.ts[i] + piece.ts[i + 1]) / 2);
+      expect(segmentDistance(p, piece.pts[i], piece.pts[i + 1])).toBeLessThanOrEqual(tol + 1e-12);
+    }
   });
 
-  it("extends a line across the whole view box", () => {
-    const pts = tessellateCurve({ type: "line", o: [0, 0, 0], d: [1, 0, 0] }, viewBox([]), 4);
-    expect(pts[0][0]).toBeLessThanOrEqual(-5);
-    expect(pts[4][0]).toBeGreaterThanOrEqual(5);
+  it("runs an infinite line from face to face of the view box", () => {
+    const [piece] = curvePieces({ type: "line", o: [0, 0, 0], d: [1, 0, 0] }, viewBox([]));
+    expect(piece.pts[0][0]).toBeCloseTo(-5, 9);
+    expect(piece.pts[piece.pts.length - 1][0]).toBeCloseTo(5, 9);
+  });
+
+  it("gives nothing for a line outside the box", () => {
+    expect(curvePieces({ type: "line", o: [0, 0, 9], d: [1, 0, 0] }, viewBox([]))).toEqual([]);
   });
 });
 

@@ -1,6 +1,6 @@
 import { evalCurve } from "./curves";
 import type { CurveGeom, Range } from "./types";
-import type { Vec3 } from "./vec";
+import type { Box, Vec3 } from "./vec";
 
 const TAU = 2 * Math.PI;
 
@@ -42,8 +42,10 @@ function trigRoots(A: number, B: number, m: number, lo: number, hi: number): num
   return out;
 }
 
-/** Parameters where coordinate k (0 = x, 1 = y) of the curve equals c. */
-function crossings(g: CurveGeom, k: 0 | 1, c: number, lo: number, hi: number): number[] {
+type Axis = 0 | 1 | 2;
+
+/** Parameters where coordinate k (0 = x, 1 = y, 2 = z) of the curve equals c. */
+function crossings(g: CurveGeom, k: Axis, c: number, lo: number, hi: number): number[] {
   switch (g.type) {
     case "line":
       return g.d[k] === 0 ? [] : [(c - g.o[k]) / g.d[k]];
@@ -73,33 +75,45 @@ function domain(g: CurveGeom): Range {
   return closed ? [0, TAU] : [-Infinity, Infinity];
 }
 
-const inside = (r: Rect, p: Vec3): boolean => p[0] >= r.xmin && p[0] <= r.xmax && p[1] >= r.ymin && p[1] <= r.ymax;
+/** The region lo ≤ P[axis] ≤ hi; a rectangle is two slabs, a box three. */
+type Slab = [axis: Axis, lo: number, hi: number];
 
 /**
- * Parameter intervals of `g` whose points lie inside `rect`, increasing and disjoint.
- * The curve can only enter or leave the rectangle where it crosses one of its four edge
- * lines, so between consecutive crossings it is entirely in or out and a midpoint test
+ * Parameter intervals of `g` whose points lie inside every slab, increasing and disjoint.
+ * The curve can only enter or leave the region where it crosses one of the slabs' bounding
+ * planes, so between consecutive crossings it is entirely in or out and a midpoint test
  * decides. The unbounded pieces of an infinite curve, before the first crossing and after
  * the last one, are outside.
  */
-export function clipCurve2D(g: CurveGeom, rect: Rect): Range[] {
+function clipToSlabs(g: CurveGeom, slabs: Slab[]): Range[] {
   const [lo, hi] = domain(g);
   const cuts = new Set<number>();
-  for (const k of [0, 1] as const) {
-    for (const c of k === 0 ? [rect.xmin, rect.xmax] : [rect.ymin, rect.ymax]) {
+  for (const [k, a, b] of slabs) {
+    for (const c of [a, b]) {
       for (const t of crossings(g, k, c, lo, hi)) if (Number.isFinite(t) && t > lo && t < hi) cuts.add(t);
     }
   }
+  const inside = (p: Vec3) => slabs.every(([k, a, b]) => p[k] >= a && p[k] <= b);
   const bounds = [lo, ...[...cuts].sort((a, b) => a - b), hi];
   const out: Range[] = [];
   for (let i = 0; i + 1 < bounds.length; i++) {
     const a = bounds[i];
     const b = bounds[i + 1];
     if (!Number.isFinite(a) || !Number.isFinite(b) || b <= a) continue;
-    if (!inside(rect, evalCurve(g, (a + b) / 2))) continue;
+    if (!inside(evalCurve(g, (a + b) / 2))) continue;
     const last = out[out.length - 1];
     if (last && last[1] === a) last[1] = b;
     else out.push([a, b]);
   }
   return out;
+}
+
+/** Parameter intervals of `g` whose points lie inside `rect` (x and y only), increasing and disjoint. */
+export function clipCurve2D(g: CurveGeom, rect: Rect): Range[] {
+  return clipToSlabs(g, [[0, rect.xmin, rect.xmax], [1, rect.ymin, rect.ymax]]);
+}
+
+/** Parameter intervals of `g` whose points lie inside the 3D `box`, increasing and disjoint. */
+export function clipCurveBox(g: CurveGeom, box: Box): Range[] {
+  return clipToSlabs(g, [0, 1, 2].map((k) => [k as Axis, box.min[k], box.max[k]]));
 }

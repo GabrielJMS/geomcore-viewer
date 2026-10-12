@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { dashPolyline, sampleAdaptive, segmentDistance } from "../src/geom/sample";
-import type { Vec2 } from "../src/geom/vec";
+import type { Vec2, Vec3 } from "../src/geom/vec";
 
 const TAU = 2 * Math.PI;
 const circle = (r: number) => (t: number): Vec2 => [r * Math.cos(t), r * Math.sin(t)];
@@ -10,6 +10,10 @@ describe("segmentDistance", () => {
     expect(segmentDistance([5, 3], [0, 0], [10, 0])).toBe(3);
     expect(segmentDistance([13, 4], [0, 0], [10, 0])).toBe(5);
     expect(segmentDistance([1, 1], [0, 0], [0, 0])).toBeCloseTo(Math.SQRT2, 12);
+  });
+
+  it("works in 3D", () => {
+    expect(segmentDistance([5, 3, 4], [0, 0, 0], [10, 0, 0])).toBe(5);
   });
 });
 
@@ -44,6 +48,18 @@ describe("sampleAdaptive", () => {
   it("does not refine a curve smaller than a pixel, nor one that evaluates to NaN", () => {
     expect(sampleAdaptive(circle(1e-6), 0, TAU).pts.length).toBe(17);
     expect(sampleAdaptive(() => [NaN, NaN], 0, 1).pts.length).toBe(17);
+  });
+});
+
+describe("sampleAdaptive in world units", () => {
+  it("keeps a 3D helix within the tolerance", () => {
+    const f = (t: number): Vec3 => [Math.cos(t), Math.sin(t), 0.2 * t];
+    const { pts, ts } = sampleAdaptive(f, 0, 4 * TAU, 1e-3);
+    for (let i = 0; i + 1 < pts.length; i++) {
+      const p = f((ts[i] + ts[i + 1]) / 2);
+      expect(segmentDistance(p, pts[i], pts[i + 1])).toBeLessThanOrEqual(1e-3 + 1e-12);
+    }
+    expect(pts[pts.length - 1]).toEqual(f(4 * TAU));
   });
 });
 

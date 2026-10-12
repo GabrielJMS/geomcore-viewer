@@ -1,7 +1,8 @@
 import type { Vec2 } from "./vec";
 
-export interface Sampled {
-  pts: Vec2[];
+/** A sampled curve, in screen pixels (Vec2, the default) or world units (Vec3). */
+export interface Sampled<P extends number[] = Vec2> {
+  pts: P[];
   /** The parameter of every point (for tooltips: hover → t). */
   ts: number[];
 }
@@ -9,26 +10,41 @@ export interface Sampled {
 const SEED_SEGMENTS = 16;
 const MAX_DEPTH = 20;
 
-/** Distance from `p` to the segment [a, b]. */
-export function segmentDistance(p: Vec2, a: Vec2, b: Vec2): number {
-  const dx = b[0] - a[0];
-  const dy = b[1] - a[1];
-  const len2 = dx * dx + dy * dy;
-  const s = len2 === 0 ? 0 : Math.max(0, Math.min(1, ((p[0] - a[0]) * dx + (p[1] - a[1]) * dy) / len2));
-  return Math.hypot(p[0] - a[0] - s * dx, p[1] - a[1] - s * dy);
+/** Distance from `p` to the segment [a, b], in 2D or 3D. */
+export function segmentDistance(p: number[], a: number[], b: number[]): number {
+  let len2 = 0;
+  let along = 0;
+  for (let i = 0; i < p.length; i++) {
+    const d = b[i] - a[i];
+    len2 += d * d;
+    along += (p[i] - a[i]) * d;
+  }
+  const s = len2 === 0 ? 0 : Math.max(0, Math.min(1, along / len2));
+  let dist2 = 0;
+  for (let i = 0; i < p.length; i++) {
+    const e = p[i] - a[i] - s * (b[i] - a[i]);
+    dist2 += e * e;
+  }
+  return Math.sqrt(dist2);
 }
 
 /**
- * Screen-space polyline of `f` over [t0, t1]: 16 even segments, each halved until the
- * curve's midpoint is within `tol` pixels of the chord, with at most `maxPoints` points in
- * all (spec §5.2: chord error ≤ 0.25 px, segments capped). Conics have no inflection, so
- * the midpoint test bounds the whole arc.
+ * Polyline of `f` over [t0, t1]: 16 even segments, each halved until the curve's midpoint
+ * is within `tol` of the chord, with at most `maxPoints` points in all. The plane view
+ * samples in screen pixels (spec §5.2: chord error ≤ 0.25 px, segments capped), the 3D view
+ * in world units. Conics have no inflection, so the midpoint test bounds the whole arc.
  */
-export function sampleAdaptive(f: (t: number) => Vec2, t0: number, t1: number, tol = 0.25, maxPoints = 4096): Sampled {
-  const pts: Vec2[] = [f(t0)];
+export function sampleAdaptive<P extends number[] = Vec2>(
+  f: (t: number) => P,
+  t0: number,
+  t1: number,
+  tol = 0.25,
+  maxPoints = 4096,
+): Sampled<P> {
+  const pts: P[] = [f(t0)];
   const ts: number[] = [t0];
   let budget = maxPoints - SEED_SEGMENTS - 1;
-  const refine = (a: number, pa: Vec2, b: number, pb: Vec2, depth: number): void => {
+  const refine = (a: number, pa: P, b: number, pb: P, depth: number): void => {
     const m = (a + b) / 2;
     const pm = f(m);
     if (depth < MAX_DEPTH && budget > 0 && segmentDistance(pm, pa, pb) > tol) {

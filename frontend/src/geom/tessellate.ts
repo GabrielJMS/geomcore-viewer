@@ -1,7 +1,13 @@
-import { curveRange, evalCurve } from "./curves";
+import { halfSize } from "./bounds";
+import { clipCurveBox } from "./clip";
+import { evalCurve } from "./curves";
+import { Sampled, sampleAdaptive } from "./sample";
 import { evalSurface, surfaceWindow } from "./surfaces";
 import type { CurveGeom, SurfaceGeom } from "./types";
 import { Box, Vec3, add, cross, norm, scale, sub } from "./vec";
+
+/** Chord tolerance of the 3D view, as a fraction of the view box's half-size (≈ 0.4 px when the scene fills the pane). */
+export const WORLD_TOL = 5e-4;
 
 export interface TriMesh {
   positions: number[];
@@ -10,12 +16,9 @@ export interface TriMesh {
   assumed: boolean;
 }
 
-/** Polyline through the curve, uniform in t over `curveRange(g, box)`. */
-export function tessellateCurve(g: CurveGeom, box: Box, segments = 256): Vec3[] {
-  const [t0, t1] = curveRange(g, box);
-  const points: Vec3[] = [];
-  for (let i = 0; i <= segments; i++) points.push(evalCurve(g, t0 + ((t1 - t0) * i) / segments));
-  return points;
+/** The curve's pieces inside `box` (spec §5.3: the view box is the scene's ×1.5), clipped in closed form and sampled to `tol`. */
+export function curvePieces(g: CurveGeom, box: Box, tol = WORLD_TOL * halfSize(box)): Sampled<Vec3>[] {
+  return clipCurveBox(g, box).map(([a, b]) => sampleAdaptive((t) => evalCurve(g, t), a, b, tol));
 }
 
 /** Grid triangulation of the surface over its window (same layout as the Python sampler). */

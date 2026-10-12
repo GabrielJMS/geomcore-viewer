@@ -2,7 +2,7 @@ import * as BABYLON from "@babylonjs/core";
 import { cameraScale } from "./camera";
 import { Changes, FrameScheduler } from "./frame";
 import { halfSize, sameBox, sceneBounds, viewBox } from "./geom/bounds";
-import { arrowPolylines, tessellateCurve, tessellateSurface } from "./geom/tessellate";
+import { arrowPolylines, curvePieces, tessellateSurface } from "./geom/tessellate";
 import { isCurve, isSurface } from "./geom/types";
 import type { Box, Vec3 } from "./geom/vec";
 import type { SceneObject } from "./protocol";
@@ -192,7 +192,7 @@ export class View3D {
   private build(o: SceneObject): BABYLON.AbstractMesh[] {
     const g = o.geom;
     const color = BABYLON.Color3.FromHexString(colorOf(o));
-    if (isCurve(g)) return this.lines(o.id, [tessellateCurve(g, this.box)], color);
+    if (isCurve(g)) return this.lines(o.id, curvePieces(g, this.box).map((s) => s.pts), color);
     if (g.type === "polyline") return this.lines(o.id, [g.points], color);
     if (g.type === "arrow") return this.lines(o.id, arrowPolylines(g.at, g.vec), color);
     if (isSurface(g)) {
