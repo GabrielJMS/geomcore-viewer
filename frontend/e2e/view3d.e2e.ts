@@ -74,3 +74,47 @@ test("hovering a 3D curve highlights it and shows its parameter and point", asyn
   await expect(tooltip).toContainText(", 2.236)"); // on SY₁, whatever t the pointer lands on
   await expect(page.locator("#view3d .labels .label.lit")).toHaveText("SY₁");
 });
+
+test("the (u,v) pane shows the pcurves' surface, and U hides it", async ({ page, request }) => {
+  await postScene(request, "pcurve");
+  await page.goto("/");
+  const pane = page.locator(".uvpane");
+  await expect(pane).toBeVisible();
+  await expect(pane.locator(".uv-title")).toHaveText("Y · cylinder (u, v)");
+  await page.keyboard.press("u");
+  await expect(pane).toBeHidden();
+  await page.keyboard.press("u");
+  await expect(pane).toBeVisible();
+  await page.keyboard.press("2");
+  await expect(pane).toBeHidden(); // it belongs to the 3D view
+});
+
+test("hover links the (u,v) pane and the 3D view both ways", async ({ page, request }) => {
+  await postScene(request, "pcurve");
+  await page.goto("/");
+  await expect.poll(() => pixelsLike(page, "#00798c")).toBeGreaterThan(100); // the ring is drawn
+  const box = (await page.locator(".uvpane canvas").boundingBox())!;
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await expect(page.locator(".uv-readout")).toContainText("→ (");
+  expect(await page.evaluate(() => (window as unknown as { __gv: { view3d: { scene: { getMeshByName(n: string): unknown } } } }).__gv.view3d.scene.getMeshByName("uv-cursor") !== null)).toBe(true);
+  const [x, y] = await page.evaluate(() => {
+    const gv = (window as unknown as { __gv: { view3d: { screenOf(p: number[]): number[]; canvas: HTMLCanvasElement } } }).__gv;
+    const s = gv.view3d.screenOf([0, -2, 1.5]); // the ring at u = 3π/2, facing the camera
+    const r = gv.view3d.canvas.getBoundingClientRect();
+    return [r.left + s[0], r.top + s[1]];
+  });
+  await page.mouse.move(x, y);
+  await expect(page.locator("#view3d .tooltip .head")).toHaveText("ring · pcurve");
+  await expect(page.locator(".uv-readout")).toContainText("· v 1.5 → (");
+});
+
+test("selecting a surface shows it in the (u,v) pane", async ({ page, request }) => {
+  await postScene(request, "quadrics_3d");
+  await page.goto("/");
+  await expect(page.locator("#count")).toHaveText("7 objects");
+  await expect(page.locator(".uvpane")).toBeHidden(); // no pcurve, nothing selected
+  await page.locator("#object-list li.object", { hasText: "S" }).first().click();
+  await expect(page.locator(".uvpane .uv-title")).toHaveText("S · sphere (u, v)");
+  await page.keyboard.press("Escape");
+  await expect(page.locator(".uvpane")).toBeHidden();
+});

@@ -4,7 +4,7 @@ import { viewBox } from "../src/geom/bounds";
 import type { Geom } from "../src/geom/types";
 import type { Frame, Vec2 } from "../src/geom/vec";
 import type { SceneObject } from "../src/protocol";
-import { uvModel, uvSubject, wrapAxis, wrapUv } from "../src/viewuv/model";
+import { fromPane, hoverText, toPane, uvModel, uvSubject, wrapAxis, wrapUv } from "../src/viewuv/model";
 
 const TAU = 2 * Math.PI;
 const world: Frame = { o: [0, 0, 0], x: [1, 0, 0], y: [0, 1, 0], z: [0, 0, 1] };
@@ -82,5 +82,30 @@ describe("uvModel", () => {
   it("leaves hidden pcurves out, and wraps a hover point into the window", () => {
     expect(uvModel(objects, subject, box, (o) => o.id !== "helix").curves.map((c) => c.id)).toEqual(["ring", "zigzag"]);
     close(wrapUv(m, [-1, 7]), [TAU - 1, 7]);
+  });
+});
+
+describe("pane mapping", () => {
+  const m = { u: [0, TAU] as [number, number], v: [-1, 4] as [number, number] };
+  const r = { left: 30, top: 10, width: 200, height: 100 };
+
+  it("stretches the window over the plot area, v upwards", () => {
+    close(toPane(m, r, [0, -1]), [30, 110]);
+    close(toPane(m, r, [TAU, 4]), [230, 10]);
+    close(toPane(m, r, [Math.PI, 1.5]), [130, 60]);
+  });
+
+  it("maps pixels back, telling whether they are in the window", () => {
+    const { uv, inside } = fromPane(m, r, [130, 60]);
+    close(uv, [Math.PI, 1.5]);
+    expect(inside).toBe(true);
+    expect(fromPane(m, r, [20, 60]).inside).toBe(false);
+    expect(fromPane(m, r, [130, 111]).inside).toBe(false);
+  });
+});
+
+describe("hoverText", () => {
+  it("reads u, v and the surface point", () => {
+    expect(hoverText([Math.PI / 2, 1.5], [0, 2, 1.5])).toBe("u 1.571 · v 1.5 → (0, 2, 1.5)");
   });
 });

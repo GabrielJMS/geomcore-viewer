@@ -1,7 +1,9 @@
 import * as BABYLON from "@babylonjs/core";
 import { Changes, FrameScheduler } from "../frame";
 import { sameBox, sceneBounds, viewBox } from "../geom/bounds";
-import { isPcurve } from "../geom/types";
+import { uvAt } from "../geom/pcurve";
+import { evalSurface } from "../geom/surfaces";
+import { isPcurve, isSurface } from "../geom/types";
 import type { Box, Vec2, Vec3 } from "../geom/vec";
 import type { SceneObject } from "../protocol";
 import type { Store } from "../store";
@@ -9,10 +11,11 @@ import { LabelItem, LabelLayer, TextMeasure } from "../ui/labels";
 import type { UiEvent, UiState } from "../ui/state";
 import { PALETTES, Palette, mixHex } from "../ui/theme";
 import { placeLabels } from "../view2d/placement";
+import type { HoverLink, UvHover } from "../viewuv/link";
 import { EXTRA_MIX, TextKind } from "../view2d/render";
 import { SNAPS, Snap, cameraScale, fitRadius, orthoExtents, pixelSize } from "./camera";
 import { Hit3D, Project, describeHit3D, pickProjected, surfaceUv } from "./pick";
-import { Lines3D, Markers3D, ObjectDraw3D, Text3D, hasCurves, objectDraw3D, screenPx } from "./render";
+import { Lines3D, Markers3D, ObjectDraw3D, POINT_PX, Text3D, hasCurves, objectDraw3D, screenPx } from "./render";
 import { Ground, ground } from "./scene";
 
 const v3 = (p: Vec3) => new BABYLON.Vector3(p[0], p[1], p[2]);
@@ -29,8 +32,15 @@ interface Built {
   draw: ObjectDraw3D;
   meshes: BABYLON.AbstractMesh[];
   lines: { mesh: BABYLON.GreasedLineBaseMesh; part: Lines3D }[];
-  markers: { mesh: BABYLON.Mesh; part: Markers3D; matrices: Float32Array }[];
+  markers: Marker[];
   surface: BABYLON.StandardMaterial | null;
+}
+
+/** Thin-instanced spheres and the positions they stand at. */
+interface Marker {
+  mesh: BABYLON.Mesh;
+  part: Markers3D;
+  matrices: Float32Array;
 }
 
 /**
@@ -63,11 +73,14 @@ export class View3D {
   /** Labels follow the camera: re-placed after a frame in which it (or the scene) moved. */
   private labelsDirty = true;
   private hover: Hit3D | null = null;
+  /** The point the (u,v) pane's pointer is at, S(u, v), on its surface. */
+  private cursor: Marker | null = null;
 
   constructor(
     private store: Store,
     private ui: UiState,
     private host: HTMLElement,
+    private link: HoverLink,
   ) {
     this.canvas = document.createElement("canvas");
     this.canvas.id = "canvas3d";
@@ -101,6 +114,7 @@ export class View3D {
     this.tooltip.hidden = true;
     host.appendChild(this.tooltip);
     this.listenHover();
+    link.onChange((h) => this.showCursor(h));
     store.onChange((ev) => {
       if (ev.type === "meta") return;
       this.changes.note(ev);
@@ -300,20 +314,42 @@ export class View3D {
     const eye = this.camera.position;
     const forward = this.camera.getForwardRay(1).direction;
     const ws = this.widthScale;
+    const size = ({ mesh, part, matrices }: Marker, lit: boolean) => {
+      const px = screenPx(part.px, ws, lit);
+      part.at.forEach((p, i) => {
+        const depth = (p[0] - eye.x) * forward.x + (p[1] - eye.y) * forward.y + (p[2] - eye.z) * forward.z;
+        const s = 2 * px * pixelSize(gauge, depth); // the marker mesh is a unit-diameter sphere
+        BABYLON.Matrix.ScalingToRef(s, s, s, scratch);
+        scratch.setTranslationFromFloats(p[0], p[1], p[2]);
+        scratch.copyToArray(matrices, 16 * i);
+      });
+      mesh.thinInstanceBufferUpdated("matrix");
+    };
     for (const b of this.built.values()) {
       const lit = this.isLit(b.draw.id);
-      for (const { mesh, part, matrices } of b.markers) {
-        const px = screenPx(part.px, ws, lit);
-        part.at.forEach((p, i) => {
-          const depth = (p[0] - eye.x) * forward.x + (p[1] - eye.y) * forward.y + (p[2] - eye.z) * forward.z;
-          const s = 2 * px * pixelSize(gauge, depth); // the marker mesh is a unit-diameter sphere
-          BABYLON.Matrix.ScalingToRef(s, s, s, scratch);
-          scratch.setTranslationFromFloats(p[0], p[1], p[2]);
-          scratch.copyToArray(matrices, 16 * i);
-        });
-        mesh.thinInstanceBufferUpdated("matrix");
-      }
+      for (const marker of b.markers) size(marker, lit);
     }
+    if (this.cursor) size(this.cursor, false);
+  }
+
+  /** Spec §5.4: the (u,v) pane's pointer, shown on its surface at S(u, v). */
+  private showCursor(h: UvHover | null): void {
+    if (this.cursor) disposeMesh(this.cursor.mesh);
+    this.cursor = null;
+    const s = h?.from === "uv" ? this.store.objects.get(h.surface)?.geom : undefined;
+    if (!h || !s || !isSurface(s)) return;
+    const at = evalSurface(s, h.uv[0], h.uv[1]);
+    this.cursor = this.markers("uv-cursor", { id: h.surface, at: [at], color: this.palette.text, px: POINT_PX, alpha: 1, extra: false });
+    this.cursor.mesh.renderingGroupId = 1;
+  }
+
+  /** Spec §5.4: a hover on a surface or a pcurve tells the (u,v) pane where it is. */
+  private publish(hit: Hit3D | null): void {
+    const o = hit ? this.store.objects.get(hit.id) : undefined;
+    let next: UvHover | null = null;
+    if (hit && o && hit.uv) next = { surface: o.id, uv: hit.uv, from: "3d" };
+    else if (hit && o && isPcurve(o.geom) && hit.t !== null) next = { surface: o.geom.surface, uv: uvAt(o.geom.curve, hit.t), from: "3d" };
+    if (next || this.link.current?.from === "3d") this.link.set(next);
   }
 
   private isLit(id: string): boolean {
@@ -422,6 +458,7 @@ export class View3D {
   private setHover(hit: Hit3D | null, pointer: [number, number] | null): void {
     const changed = hit?.id !== this.hover?.id;
     this.hover = hit;
+    this.publish(hit);
     if (changed) {
       this.applyHighlight();
       this.labelsDirty = true;
@@ -536,7 +573,7 @@ export class View3D {
   }
 
   /** One unit sphere drawn at every position (thin instances), resized each frame to keep its pixel radius. */
-  private markers(name: string, part: Markers3D) {
+  private markers(name: string, part: Markers3D): Marker {
     const mesh = BABYLON.MeshBuilder.CreateSphere(name, { diameter: 1, segments: 8 }, this.scene);
     const mat = new BABYLON.StandardMaterial(`${name}-m`, this.scene);
     const color = color3(part.extra ? mixHex(part.color, this.palette.bg, EXTRA_MIX) : part.color);

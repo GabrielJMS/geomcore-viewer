@@ -3,9 +3,10 @@ import { pcurveRanges, uvAt } from "../geom/pcurve";
 import { sampleAdaptive } from "../geom/sample";
 import { periods, surfaceWindow } from "../geom/surfaces";
 import { Range, SurfaceGeom, isPcurve, isSurface } from "../geom/types";
-import type { Box, Vec2 } from "../geom/vec";
+import type { Box, Vec2, Vec3 } from "../geom/vec";
 import type { SceneObject } from "../protocol";
 import { colorOf } from "../ui/colors";
+import { fmtNum, fmtPoint } from "../ui/format";
 import { ticks } from "../view2d/plane";
 
 /** One pcurve as the pane draws it: (u, v) paths wrapped into the window, cut at the seams. */
@@ -116,4 +117,30 @@ export function uvModel(objects: Iterable<SceneObject>, subject: SceneObject, bo
     curves.push({ id: o.id, label: o.label ?? o.id, color: colorOf(o), dashed: Boolean(o.style?.dashed), paths });
   }
   return { surface: subject, geom, u, v, period, seams, curves };
+}
+
+/** The pane's plot area in CSS pixels: the window is stretched to fill it (u and v need not share a scale). */
+export interface PlotRect {
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+}
+
+/** (u, v) → pane pixels: u grows to the right, v upwards. */
+export function toPane(m: Pick<UvModel, "u" | "v">, r: PlotRect, uv: Vec2): Vec2 {
+  return [r.left + ((uv[0] - m.u[0]) / (m.u[1] - m.u[0])) * r.width, r.top + r.height - ((uv[1] - m.v[0]) / (m.v[1] - m.v[0])) * r.height];
+}
+
+/** Pane pixels → (u, v); `inside` tells whether the point is in the window. */
+export function fromPane(m: Pick<UvModel, "u" | "v">, r: PlotRect, p: Vec2): { uv: Vec2; inside: boolean } {
+  const su = (p[0] - r.left) / r.width;
+  const sv = (r.top + r.height - p[1]) / r.height;
+  const uv: Vec2 = [m.u[0] + su * (m.u[1] - m.u[0]), m.v[0] + sv * (m.v[1] - m.v[0])];
+  return { uv, inside: su >= 0 && su <= 1 && sv >= 0 && sv <= 1 };
+}
+
+/** The pane's readout for a linked hover: "u 1.571 · v 0.5 → (x, y, z)". */
+export function hoverText(uv: Vec2, p: Vec3): string {
+  return `u ${fmtNum(uv[0])} · v ${fmtNum(uv[1])} → ${fmtPoint(p)}`;
 }

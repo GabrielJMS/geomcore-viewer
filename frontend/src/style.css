@@ -60,6 +60,12 @@ main { flex: 1; min-height: 0; display: grid; grid-template-columns: 1fr 260px; 
 .toolbar3d { position: absolute; top: 0.5rem; right: 0.5rem; display: flex; gap: 0.25rem; }
 .toolbar3d button { padding: 0.15rem 0.45rem; font-size: 0.75rem; opacity: 0.85; }
 body.presenting .toolbar3d { display: none; }
+.uvpane { position: absolute; right: 0.5rem; bottom: 0.5rem; z-index: 1; padding: 0.3rem 0.4rem; border: 1px solid var(--border); border-radius: 6px; background: var(--surface); font-size: 12px; }
+.uvpane[hidden] { display: none; }
+.uvpane canvas { display: block; }
+.uvpane .uv-title { font-weight: 600; margin-bottom: 0.2rem; }
+.uvpane .uv-readout { font-variant-numeric: tabular-nums; color: var(--muted); min-height: 1.4em; white-space: nowrap; }
+body.presenting .uvpane { font-size: 18px; }
 #view2d canvas { display: block; }
 
 aside#panel { background: var(--surface); border-left: 1px solid var(--border); padding: 0.5rem 0.75rem; overflow: auto; }
