@@ -108,6 +108,17 @@ test("F fits the plane view with auto-fit off", async ({ page, request }) => {
   await expect.poll(() => camera(page)).toEqual(fitted);
 });
 
+test("a selected object stays highlighted in the plane view until Esc", async ({ page, request }) => {
+  await request.post("/api/objects", { data: { run: "r1", title: "select", objects: [point("A", 0, 0), point("B", 2, 1)] } });
+  await page.goto("/");
+  await expect(page.locator(".labels .label", { hasText: /^A / })).toBeVisible();
+  await page.locator('li.object[data-id="A"]').click();
+  await expect(page.locator(".labels .label.lit", { hasText: /^A / })).toBeVisible();
+  await expect(page.locator(".labels .label.lit")).toHaveCount(1);
+  await page.keyboard.press("Escape");
+  await expect(page.locator(".labels .label.lit")).toHaveCount(0);
+});
+
 test("T switches the theme, P presents and Esc leaves", async ({ page }) => {
   await page.goto("/?scene=sample-scene.json");
   await expect(page.locator("#count")).toHaveText("12 objects");

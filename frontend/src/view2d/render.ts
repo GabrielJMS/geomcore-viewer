@@ -31,6 +31,8 @@ export interface DrawOptions {
   widthScale: number;
   /** The hovered object, drawn thicker. */
   highlight: string | null;
+  /** The selected object (spec §5.1), drawn like the hovered one. */
+  selected: string | null;
 }
 
 export interface Stroke {
@@ -110,13 +112,14 @@ export function buildDrawList(objects: Iterable<SceneObject>, cam: Camera2D, opt
   const out: DrawList = { strokes: [], dots: [], texts: [], pickables: [] };
   const clip = expandRect(visibleRect(cam), MARGIN);
   const ws = opts.widthScale;
+  const isLit = (id: string): boolean => id === opts.highlight || id === opts.selected;
   const dash = (paths: Vec2[][]): Vec2[][] => paths.flatMap((p) => dashPolyline(p, DASH[0] * ws, DASH[1] * ws));
   const screen = (p: Vec3): Vec2 => worldToScreen(cam, p[0], p[1]);
   for (const o of objects) {
     const g = o.geom;
     if (g.type === "note" || !inPlaneZ0(g) || !opts.visible(o)) continue;
     const color = colorOf(o);
-    const lit = o.id === opts.highlight ? HIGHLIGHT_PX : 0;
+    const lit = isLit(o.id) ? HIGHLIGHT_PX : 0;
     const alpha = Math.min(Math.max(o.style?.opacity ?? 1, 0), 1);
     const width = (o.style?.width ?? LINE_PX) * ws + lit;
     const stroke = (paths: Vec2[][]) =>
@@ -169,7 +172,7 @@ export function buildDrawList(objects: Iterable<SceneObject>, cam: Camera2D, opt
       out.texts.push({ key: `t:${o.id}`, id: o.id, text: g.text, at: screen(g.at), color: textColor, kind: "text" });
     }
   }
-  const rank = (t: TextItem) => (t.id === opts.highlight ? -1 : KIND_ORDER[t.kind]);
+  const rank = (t: TextItem) => (isLit(t.id) ? -1 : KIND_ORDER[t.kind]);
   out.texts.sort((a, b) => rank(a) - rank(b));
   return out;
 }

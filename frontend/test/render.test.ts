@@ -13,6 +13,7 @@ const opts = (extra: Partial<DrawOptions> = {}): DrawOptions => ({
   palette: PALETTES.light,
   widthScale: 1,
   highlight: null,
+  selected: null,
   ...extra,
 });
 const diagonal = obj("L", { type: "line", o: [0.3, -0.2, 0], d: [1, 0.7, 0] });
@@ -95,6 +96,21 @@ describe("buildDrawList", () => {
     ];
     expect(buildDrawList(objects, cam, opts()).texts.map((t) => t.id)).toEqual(["T", "P", "C"]);
     expect(buildDrawList(objects, cam, opts({ highlight: "C" })).texts.map((t) => t.id)).toEqual(["C", "T", "P"]);
+  });
+
+  it("highlights the selected object when it is not hovered, its label first", () => {
+    const objects = [
+      obj("C", { type: "circle", frame, r: 1 }),
+      obj("P", { type: "point", p: [2, 0, 0] }),
+      obj("T", { type: "text", at: [0, 2, 0], text: "hello" }),
+    ];
+    const curve = buildDrawList(objects, cam, opts({ selected: "C" }));
+    expect(curve.strokes[0].width).toBe(4);
+    expect(curve.texts.map((t) => t.id)).toEqual(["C", "T", "P"]);
+    const point = buildDrawList(objects, cam, opts({ selected: "P", highlight: "C" }));
+    expect(point.strokes[0].width).toBe(4); // hovered
+    expect(point.dots[0].radius).toBe(6); // selected
+    expect(point.texts.map((t) => t.id)).toEqual(["C", "P", "T"]);
   });
 
   it("gives pickables with curve parameters", () => {

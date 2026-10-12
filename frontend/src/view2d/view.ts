@@ -117,6 +117,7 @@ export class View2D {
       // Framing needs a laid-out camera: a hidden or never-drawn pane would get a degenerate scale, so wait for draw().
       if (this.active && this.cam.width > 0 && this.cam.height > 0) this.frameSelected();
       else this.framePending = true;
+      this.frame.request(); // the selection is drawn highlighted, and a cleared one no longer is
     } else if (ev !== "collapse" && ev !== "view") {
       this.frame.request(); // theme, presentation mode, visibility
     }
@@ -177,6 +178,7 @@ export class View2D {
       palette,
       widthScale: this.widthScale,
       highlight: this.highlight,
+      selected: this.ui.selected,
     });
     if (this.highlight && !this.list.pickables.some((p) => p.id === this.highlight)) this.hover(null);
     this.paint();
@@ -265,7 +267,8 @@ export class View2D {
     }));
     return placeLabels(requests, this.cam.width, this.cam.height).map((p) => {
       const t = byKey.get(p.key)!;
-      const className = t.kind === "extra" ? "label extra" : t.id === this.highlight ? "label lit" : "label";
+      const lit = t.id === this.highlight || t.id === this.ui.selected;
+      const className = t.kind === "extra" ? "label extra" : lit ? "label lit" : "label";
       return { key: p.key, text: t.text, left: p.left, top: p.top, className, fontPx: px, color: t.color };
     });
   }
