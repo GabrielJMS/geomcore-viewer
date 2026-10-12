@@ -27,8 +27,25 @@ def default_url() -> str:
 
 
 def default_port() -> int:
-    """The port of :func:`default_url`, or ``DEFAULT_PORT`` when the URL names none."""
-    return urlparse(default_url()).port or DEFAULT_PORT
+    """The port of :func:`default_url`: 80 when the URL names none, as ``http://`` means.
+
+    Raises ValueError, naming the variable, when the port is malformed.
+    """
+    url = default_url()
+    try:
+        port = urlparse(url).port
+    except ValueError as err:
+        raise ValueError(f"{URL_ENV}={url!r} has a malformed port ({err})") from None
+    return 80 if port is None else port
+
+
+def allowed_hosts(port: int) -> set[str]:
+    """``Host`` values that name this server; browsers leave out the default port 80."""
+    hosts = {f"127.0.0.1:{port}", f"localhost:{port}"}
+    if port == 80:
+        hosts |= {"127.0.0.1", "localhost"}
+    return hosts
+
 
 _MIME = {
     ".html": "text/html",
@@ -166,12 +183,12 @@ def make_handler(frontend_dir: Path, state: _State) -> type[BaseHTTPRequestHandl
             ``Host`` (DNS rebinding) and ``Origin`` (cross-site fetch) headers
             must name this server. Answers 403 itself when they do not.
             """
-            port = self.server.server_address[1]
-            hosts = {f"127.0.0.1:{port}", f"localhost:{port}"}
+            hosts = allowed_hosts(self.server.server_address[1])
             origin = self.headers.get("Origin")
             if self.headers.get("Host") in hosts and (origin is None or origin in {f"http://{h}" for h in hosts}):
                 return True
-            self._send_json({"error": "request is not from this server's own origin"}, 403)
+            # "app" lets a client tell this refusal (e.g. through a port-changing tunnel) from another program.
+            self._send_json({"error": "request is not from this server's own origin", "app": APP}, 403)
             return False
 
         def _read_json(self) -> object:

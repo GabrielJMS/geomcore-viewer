@@ -1,5 +1,8 @@
 export type Vec3 = [number, number, number];
 
+/** A screen-space point, in pixels. */
+export type Vec2 = [number, number];
+
 /** Right-handed orthonormal frame: origin plus unit axes (protocol `frame`). */
 export interface Frame {
   o: Vec3;

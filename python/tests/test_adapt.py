@@ -7,6 +7,7 @@ from geomcore_viewer.adapt import (
     as_vec,
     eval_curve,
     eval_surface,
+    indexed,
     scene_extent,
     subscript,
     to_objects,
@@ -213,3 +214,38 @@ def test_real_geomcore_intersections():
     assert [p["label"] for p in parts] == ["P₁", "P₂"]
     far = Circle3D(P(9, 0, 0), V.z(), 1.0)
     assert to_objects(C.intersect_circle(far), "Q")[0]["geom"]["text"] == "Q: ∅"
+
+
+def test_hit_parameters_and_tag_go_to_meta():
+    parts = to_objects(("points", [(0.1, Point3D(1, 0, 0), 0.2), (0.3, Point3D(0, 1, 0))]), "P")
+    assert [p["meta"] for p in parts] == [
+        {"tag": "points", "params": [0.1, 0.2]},
+        {"tag": "points", "params": [0.3]},
+    ]
+
+
+def test_a_bare_geometry_has_no_params():
+    [part] = to_objects(("point", Point3D(1, 2, 0)), "A")
+    assert part["meta"] == {"tag": "point"}
+    assert "meta" not in to_objects(Point3D(1, 2, 0), "B")[0]
+    assert "meta" not in to_objects([Point3D(1, 2, 0), Point3D(3, 4, 0)], "C")[0]
+
+
+def test_hit_parameters_are_json_safe():
+    [part] = to_objects(("tangent", (float("nan"), Point3D(1, 1, 0), (1, 2.5))), "T")[:1]
+    assert part["meta"] == {"tag": "tangent", "params": [None, [1, 2.5]]}
+
+
+def test_tuples_that_are_not_hits_still_give_their_geometry():
+    two = to_objects(("points", (Point3D(0, 0, 0), Point3D(1, 1, 0))), "P")  # two geometries: not one hit
+    assert [p["label"] for p in two] == ["P₁", "P₂"]
+    assert all(p["meta"] == {"tag": "points"} for p in two)
+    flagged = to_objects(("points", [(True, Point3D(0, 0, 0))]), "F")  # a bool is not a parameter
+    assert flagged[0]["meta"] == {"tag": "points"}
+
+
+def test_indexed_labels_never_collide():
+    assert indexed("P", 3) == "P₃"
+    assert indexed("P", 12) == "P₁₂"
+    assert indexed("P₁", 2) == "P₁,₂"
+    assert indexed("Q₁₀", 1) == "Q₁₀,₁"

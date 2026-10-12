@@ -37,7 +37,7 @@ The viewer never computes intersections or any other geometric query.
 | `source` | no | client-side type name, e.g. `Ellipse3D` |
 | `style` | no | `color` (CSS), `width` (px), `dashed`, `opacity` (0–1) |
 | `extras` | no | curves: `foci`, `center`, `axes`, `asymptotes`, `directrix`, `vertex`; surfaces: `isolines: [nu, nv]`, `wire`. Unknown extras are ignored. |
-| `meta` | no | free-form client data |
+| `meta` | no | free-form client data. The Python client sets `tag` (the intersection result's tag, e.g. `"points"`) and `params` (the numbers of the hit, e.g. `[t, s]` for `(t, P, s)`; a non-finite one is `null`); the 2D tooltip shows `params`. |
 
 `view` is `"auto"`, `"2d"` or `"3d"`. Vectors are `[x, y, z]`; a
 2-component vector is read as `[x, y, 0]`. Every `frame` carries all three
@@ -129,9 +129,12 @@ Clients ignore event types they do not know.
 Every `POST` must send `Content-Type: application/json` (anything else
 gets `415`). Any website can make a browser call `127.0.0.1`, so the server
 only answers requests from itself: the `Host` header must be
-`127.0.0.1:<port>` or `localhost:<port>`, and an `Origin` header, when
-present, must be `http://127.0.0.1:<port>` or `http://localhost:<port>`;
-otherwise `403`. It sends no CORS headers and answers no preflight, so other
+`127.0.0.1:<port>` or `localhost:<port>` (bare `127.0.0.1` or `localhost`
+too on port 80, where browsers leave the port out), and an `Origin` header,
+when present, must be `http://` followed by one of those; otherwise `403`
+with `{"error": …, "app": "geomcore-viewer"}`, so a client can tell this
+refusal from another program. An SSH tunnel must therefore keep the port:
+`ssh -L 8765:127.0.0.1:8765 <host>`. It sends no CORS headers and answers no preflight, so other
 origins can neither read nor write. Non-browser clients (Python, Rust, curl)
 send no `Origin`; they just need the JSON content type and a `Host` with the
 port.

@@ -1,20 +1,94 @@
-:root { color-scheme: light; }
+/* Theme colours. The canvas colours mirror ui/theme.ts PALETTES. */
+:root {
+  color-scheme: light;
+  --bg: #f7f8fa;
+  --surface: #ffffff;
+  --border: #d9dde3;
+  --text: #1f2937;
+  --muted: #6b7280;
+  --accent: #2f6aa8;
+  --on-accent: #ffffff;
+  --warn: #b45309;
+  --ok: #2f7d32;
+  --selected: #e3edf8;
+  --tooltip-bg: rgba(17, 24, 39, 0.92);
+  --tooltip-text: #f9fafb;
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #16181d;
+  --surface: #1e2128;
+  --border: #30343d;
+  --text: #e5e7eb;
+  --muted: #9aa3b2;
+  --accent: #6aa5e0;
+  --on-accent: #111827;
+  --warn: #f0a35e;
+  --ok: #7cc47f;
+  --selected: #24364d;
+  --tooltip-bg: rgba(243, 244, 246, 0.95);
+  --tooltip-text: #111827;
+}
+
 * { box-sizing: border-box; }
-body { margin: 0; font: 14px/1.4 system-ui, sans-serif; background: #f2f2f2; color: #222; }
-header { display: flex; gap: 0.75rem; align-items: center; padding: 0.5rem 1rem; background: #ffffff; border-bottom: 1px solid #ddd; }
-header h1 { font-size: 1rem; margin: 0; }
+html, body { height: 100%; }
+body { margin: 0; display: flex; flex-direction: column; font: 14px/1.4 system-ui, sans-serif; background: var(--bg); color: var(--text); }
+button { font: inherit; color: inherit; background: var(--surface); border: 1px solid var(--border); border-radius: 4px; padding: 0.15rem 0.6rem; cursor: pointer; }
+button:not(:disabled):hover { border-color: var(--accent); }
+button:disabled { opacity: 0.45; cursor: not-allowed; }
+button[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+kbd { font: 11px/1 ui-monospace, monospace; padding: 0.1rem 0.3rem; border: 1px solid var(--border); border-radius: 3px; }
+
+header#chrome { display: flex; gap: 0.75rem; align-items: center; padding: 0.4rem 1rem; background: var(--surface); border-bottom: 1px solid var(--border); }
+header h1 { font-size: 1rem; margin: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 header .spacer { flex: 1; }
-#status { font-size: 0.8rem; color: #2a7a2a; }
-main { display: grid; grid-template-columns: 1fr 1fr 220px; gap: 1px; height: calc(100vh - 49px); background: #ccc; }
-section { position: relative; background: #fafafa; min-width: 0; }
-section h2 { position: absolute; left: 0.5rem; bottom: 0.25rem; margin: 0; font-size: 0.75rem; font-weight: normal; color: #888; }
+header .meta { color: var(--muted); font-size: 0.8rem; white-space: nowrap; }
+header .meta:empty { display: none; }
+#status { font-size: 0.8rem; color: var(--muted); }
+#status[data-state="live"] { color: var(--ok); }
+#status[data-state="error"] { color: var(--warn); }
+.seg { display: flex; }
+.seg button:first-child { border-radius: 4px 0 0 4px; }
+.seg button:last-child { border-radius: 0 4px 4px 0; margin-left: -1px; }
+.check { display: flex; gap: 0.3rem; align-items: center; white-space: nowrap; }
+
+main { flex: 1; min-height: 0; display: grid; grid-template-columns: 1fr 260px; }
+#stage { position: relative; min-width: 0; overflow: hidden; background: var(--bg); }
 #canvas3d, #view2d { position: absolute; inset: 0; width: 100%; height: 100%; }
+#canvas3d { outline: none; }
+#stage[data-view="2d"] #canvas3d, #stage[data-view="3d"] #view2d { display: none; }
 #view2d canvas { display: block; }
-aside { background: #ffffff; padding: 0.5rem 1rem; overflow: auto; }
+
+aside#panel { background: var(--surface); border-left: 1px solid var(--border); padding: 0.5rem 0.75rem; overflow: auto; }
 aside ul { list-style: none; padding: 0; margin: 0; }
-aside li { display: flex; gap: 0.5rem; align-items: center; padding: 0.15rem 0; }
-.swatch { width: 0.8em; height: 0.8em; border-radius: 2px; display: inline-block; }
-.hint { color: #666; font-size: 0.75rem; }
-aside li .type { margin-left: auto; color: #888; font-size: 0.75rem; }
-aside li.note { color: #444; }
-aside li.note.warn, aside li.problem { color: #a4471c; }
+aside li.object { display: flex; gap: 0.45rem; align-items: center; padding: 0.15rem 0.3rem; border-radius: 4px; cursor: pointer; }
+aside li.object:hover { background: var(--bg); }
+aside li.object.selected { background: var(--selected); }
+aside li.object.hidden .name, aside li.object.hidden .swatch { opacity: 0.4; }
+aside .swatch { flex: none; width: 0.8em; height: 0.8em; border-radius: 2px; }
+aside .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+aside .detail { margin-left: auto; color: var(--muted); font-size: 0.75rem; white-space: nowrap; font-variant-numeric: tabular-nums; }
+aside li.group { margin-top: 0.4rem; }
+aside .group-head { display: flex; gap: 0.35rem; align-items: center; font-weight: 600; padding: 0.15rem 0; }
+aside .group > ul { padding-left: 1.1rem; }
+aside .twisty { border: none; background: none; padding: 0 0.2rem; color: var(--muted); }
+aside li.note { color: var(--muted); padding: 0.15rem 0.3rem; }
+aside li.note.warn, aside li.problem { color: var(--warn); }
+.hint { color: var(--muted); font-size: 0.75rem; }
+
+body.presenting header#chrome, body.presenting aside#panel { display: none; }
+body.presenting main { grid-template-columns: 1fr; }
+
+#toast { position: absolute; left: 50%; bottom: 1.25rem; transform: translateX(-50%); padding: 0.4rem 0.8rem; border-radius: 6px; background: var(--tooltip-bg); color: var(--tooltip-text); font-size: 13px; pointer-events: none; }
+#toast[hidden] { display: none; }
+
+.labels { position: absolute; inset: 0; pointer-events: none; }
+.labels > div { position: absolute; left: 0; top: 0; white-space: nowrap; line-height: 1.35; }
+.labels .label { font-weight: 600; pointer-events: auto; user-select: text; cursor: text; text-shadow: 0 0 3px var(--bg), 0 0 2px var(--bg), 0 0 1px var(--bg); }
+.labels .label.extra { font-weight: 500; }
+.labels .label.lit { text-decoration: underline; }
+.labels .tick { font-variant-numeric: tabular-nums; text-shadow: 0 0 2px var(--bg); }
+.tooltip { position: absolute; left: 0; top: 0; pointer-events: none; padding: 0.3rem 0.5rem; border-radius: 4px; background: var(--tooltip-bg); color: var(--tooltip-text); font-size: 12px; line-height: 1.4; white-space: nowrap; z-index: 1; }
+.tooltip[hidden] { display: none; }
+.tooltip .head { font-weight: 600; }
+body.presenting .tooltip { font-size: 18px; } /* ×1.5, like the labels and ticks */

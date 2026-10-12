@@ -121,9 +121,13 @@ describe("Store.load", () => {
   afterEach(() => vi.unstubAllGlobals());
 
   class NoopEventSource {
-    onmessage = null;
+    static last: NoopEventSource | null = null;
+    onmessage: ((msg: { data: string }) => void) | null = null;
     onerror = null;
     onopen = null;
+    constructor() {
+      NoopEventSource.last = this;
+    }
   }
 
   function stub(routes: Record<string, () => Response>) {
@@ -163,6 +167,31 @@ describe("Store.load", () => {
     await store.load();
     expect(store.status).toBe("static: sample-scene.json");
   });
+
+  it("does not apply the connection's first scene event twice", async () => {
+    const doc = { version: 2, title: "t", run: "r1", view: "auto", objects: [pt("a")] };
+    stub({ "api/scene": () => Response.json(doc) });
+    const store = new Store();
+    await store.load();
+    expect(store.live).toBe(true);
+    const events: StoreEvent["type"][] = [];
+    store.onChange((ev) => events.push(ev.type));
+    NoopEventSource.last!.onmessage!({ data: JSON.stringify({ type: "scene", doc }) });
+    expect(events).toEqual(["meta"]);
+    expect(store.status).toBe("live");
+  });
+
+  it("applies a scene event that differs, or that follows other events", async () => {
+    const doc = { version: 2, title: "t", run: "r1", view: "auto", objects: [pt("a")] };
+    stub({ "api/scene": () => Response.json(doc) });
+    const store = new Store();
+    await store.load();
+    const source = NoopEventSource.last!;
+    source.onmessage!({ data: JSON.stringify({ type: "upsert", objects: [pt("b")] }) });
+    expect(ids(store)).toEqual(["a", "b"]);
+    source.onmessage!({ data: JSON.stringify({ type: "scene", doc }) }); // e.g. after a reconnect
+    expect(ids(store)).toEqual(["a"]);
+  });
 });
 
 describe("Store.clearAll", () => {
@@ -172,6 +201,7 @@ describe("Store.clearAll", () => {
     const fetchMock = vi.fn(async () => Response.json({ ok: true }));
     vi.stubGlobal("fetch", fetchMock);
     const { store } = storeWith("a");
+    store.live = true;
     await store.clearAll();
     expect(fetchMock).toHaveBeenCalledWith("api/clear", {
       method: "POST",
@@ -184,17 +214,26 @@ describe("Store.clearAll", () => {
   it("reports a refused clear instead of swallowing it", async () => {
     vi.stubGlobal("fetch", vi.fn(async () => new Response("no", { status: 415 })));
     const { store } = storeWith("a");
+    store.live = true;
     await store.clearAll();
     expect(store.status).toBe("clear failed: the server answered HTTP 415");
   });
 
-  it("stays quiet on a static page, where there is no server scene to clear", async () => {
-    vi.stubGlobal("fetch", vi.fn(async () => new Response("", { status: 404 })));
+  it("reports an unreachable live server", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => Promise.reject(new TypeError("offline"))));
+    const { store } = storeWith("a");
+    store.live = true;
+    await store.clearAll();
+    expect(store.status).toBe("clear failed: the server is unreachable");
+  });
+
+  it("only clears the page on a static page, where there is no server to ask", async () => {
+    const fetchMock = vi.fn(async () => new Response("", { status: 405 }));
+    vi.stubGlobal("fetch", fetchMock);
     const { store } = storeWith("a");
     await store.clearAll();
-    expect(store.status).toBe("");
-    vi.stubGlobal("fetch", vi.fn(async () => Promise.reject(new TypeError("offline"))));
-    await store.clearAll();
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(ids(store)).toEqual([]);
     expect(store.status).toBe("");
   });
 });

@@ -1,28 +1,39 @@
 import * as BABYLON from "@babylonjs/core";
 import { cameraScale } from "./camera";
+import { Changes, FrameScheduler } from "./frame";
 import { halfSize, sameBox, sceneBounds, viewBox } from "./geom/bounds";
 import { arrowPolylines, tessellateCurve, tessellateSurface } from "./geom/tessellate";
 import { isCurve, isSurface } from "./geom/types";
 import type { Box, Vec3 } from "./geom/vec";
 import type { SceneObject } from "./protocol";
-import type { Store, StoreEvent } from "./store";
+import type { Store } from "./store";
 import { colorOf } from "./ui/colors";
+import type { UiEvent, UiState } from "./ui/state";
+import { PALETTES } from "./ui/theme";
 
 const v3 = (p: Vec3) => new BABYLON.Vector3(p[0], p[1], p[2]);
 
-/** Babylon 3D pane, z up and right-handed like geomcore. Phase 1: thin lines, plain markers. */
+/** Babylon 3D pane, z up and right-handed like geomcore. Phase 2: coalesced updates, UiState, render loop only while shown. */
 export class View3D {
   readonly scene: BABYLON.Scene;
   readonly camera: BABYLON.ArcRotateCamera;
+  private engine: BABYLON.Engine;
   private meshes = new Map<string, BABYLON.AbstractMesh[]>();
   private box: Box = viewBox([]);
   private userMoved = false;
+  private active = false;
+  private framePending = false;
+  private changes = new Changes();
+  private frame = new FrameScheduler(() => this.flush());
 
-  constructor(private store: Store, canvas: HTMLCanvasElement) {
-    const engine = new BABYLON.Engine(canvas, true);
-    this.scene = new BABYLON.Scene(engine);
+  constructor(
+    private store: Store,
+    private ui: UiState,
+    private canvas: HTMLCanvasElement,
+  ) {
+    this.engine = new BABYLON.Engine(canvas, true);
+    this.scene = new BABYLON.Scene(this.engine);
     this.scene.useRightHandedSystem = true;
-    this.scene.clearColor = new BABYLON.Color4(0.96, 0.96, 0.97, 1);
     this.camera = new BABYLON.ArcRotateCamera("cam", Math.PI / 2, Math.PI / 3, 10, BABYLON.Vector3.Zero(), this.scene);
     this.camera.upVector = new BABYLON.Vector3(0, 0, 1);
     this.camera.attachControl(canvas, true);
@@ -31,47 +42,116 @@ export class View3D {
       if (ev.buttons) this.userMoved = true;
     });
     canvas.addEventListener("wheel", () => (this.userMoved = true), { passive: true });
-    new BABYLON.HemisphericLight("light", new BABYLON.Vector3(0.3, 0.5, 1), this.scene);
-    store.onChange((ev) => this.onStore(ev));
-    window.addEventListener("resize", () => {
-      engine.resize();
-      if (this.autoFit() && !this.userMoved) this.fit();
+    canvas.addEventListener("keydown", (ev) => {
+      if (ev.key.startsWith("Arrow")) this.userMoved = true; // the camera's keyboard input
     });
-    engine.runRenderLoop(() => this.scene.render());
+    new BABYLON.HemisphericLight("light", new BABYLON.Vector3(0.3, 0.5, 1), this.scene);
+    this.applyTheme();
+    store.onChange((ev) => {
+      if (ev.type === "meta") return;
+      this.changes.note(ev);
+      this.frame.request();
+    });
+    ui.onChange((ev) => this.uiChanged(ev));
+    new ResizeObserver(() => {
+      if (!this.active) return;
+      this.engine.resize();
+      if (this.ui.autoFit && !this.userMoved) this.fit();
+      if (this.framePending) this.frame.request();
+    }).observe(canvas);
     this.rebuild();
     this.fit();
+  }
+
+  /** Debug and e2e access: the camera's position. */
+  get cameraState(): { alpha: number; beta: number; radius: number; target: Vec3 } {
+    const t = this.camera.target;
+    return { alpha: this.camera.alpha, beta: this.camera.beta, radius: this.camera.radius, target: [t.x, t.y, t.z] };
+  }
+
+  /** Render (and apply pending changes) only while the 3D view is the one shown. */
+  setActive(active: boolean): void {
+    if (active === this.active) return;
+    this.active = active;
+    if (active) {
+      this.engine.resize();
+      this.engine.runRenderLoop(() => this.scene.render());
+      this.frame.request();
+    } else {
+      this.engine.stopRenderLoop();
+    }
   }
 
   private geoms() {
     return [...this.store.objects.values()].map((o) => o.geom);
   }
 
-  private onStore(ev: StoreEvent): void {
-    if (ev.type === "meta") return;
+  /** Store changes folded since the last frame. While hidden they keep accumulating. */
+  private flush(): void {
+    if (!this.active) return;
+    const { reset, ids } = this.changes.take();
     const box = viewBox(this.geoms());
-    const boxChanged = !sameBox(box, this.box);
-    this.box = box;
     // Infinite curves and default surface windows depend on the box: rebuild when it moves.
-    if (ev.type === "reset" || boxChanged) this.rebuild();
-    else if (ev.type === "upsert") ev.objects.forEach((o) => this.show(o));
-    else this.drop(ev.id);
-    if (this.autoFit() && !this.userMoved) this.fit();
+    if (reset || !sameBox(box, this.box)) {
+      this.rebuild();
+    } else {
+      for (const id of ids) {
+        const o = this.store.objects.get(id);
+        if (o) this.show(o);
+        else this.drop(id);
+      }
+    }
+    if (this.ui.autoFit && !this.userMoved) this.fit();
     else this.applyScale();
+    if (this.framePending && this.laidOut()) {
+      this.framePending = false;
+      this.frameSelected();
+    }
   }
 
-  private autoFit(): boolean {
-    return (document.getElementById("autofit") as HTMLInputElement | null)?.checked ?? true;
+  /** Babylon's own size never reads 0 (resize() falls back to a default), so ask the element. */
+  private laidOut(): boolean {
+    return this.canvas.clientWidth > 0 && this.canvas.clientHeight > 0;
   }
 
-  /** The "fit" button (or turning auto-fit on): frame the scene and follow it again. */
+  private uiChanged(ev: UiEvent): void {
+    if (ev === "theme") this.applyTheme();
+    else if (ev === "visibility") {
+      for (const [id, meshes] of this.meshes) {
+        const o = this.store.objects.get(id);
+        const visible = o ? this.ui.isVisible(o) : false;
+        meshes.forEach((m) => m.setEnabled(visible));
+      }
+    } else if (ev === "selection") {
+      // The radius depends on the pane's aspect ratio: a hidden or unsized canvas would get a wrong one, so wait for a flush.
+      if (this.active && this.laidOut()) this.frameSelected();
+      else this.framePending = true;
+    } else if (ev === "autofit" && this.ui.autoFit) this.fitRequested();
+  }
+
+  private applyTheme(): void {
+    this.scene.clearColor = BABYLON.Color4.FromHexString(`${PALETTES[this.ui.theme].bg}ff`);
+  }
+
+  /** The "fit" button or key (or turning auto-fit on): frame the scene and follow it again. */
   fitRequested(): void {
     this.userMoved = false;
     this.fit();
   }
 
+  /** Frame the selected object; one without extent (a point, an infinite curve's origin) is only re-targeted. */
+  private frameSelected(): void {
+    const o = this.ui.selected ? this.store.objects.get(this.ui.selected) : undefined;
+    const b = o ? sceneBounds([o.geom]) : null;
+    if (!b) return;
+    this.camera.target.copyFrom(v3(b.min).add(v3(b.max)).scale(0.5));
+    if (v3(b.max).subtract(v3(b.min)).length() > 0) this.camera.radius = this.fitRadius(b);
+    this.userMoved = true;
+  }
+
   /** Distance at which the camera frames the scene (the field of view is vertical, so a narrow pane backs off). */
   private fitRadius(b: Box): number {
-    const aspect = this.scene.getEngine().getAspectRatio(this.camera);
+    const aspect = this.engine.getAspectRatio(this.camera);
     return (Math.max(v3(b.max).subtract(v3(b.min)).length() / 2, 1e-6) * 3) / Math.min(1, aspect || 1);
   }
 
@@ -103,7 +183,10 @@ export class View3D {
   private show(o: SceneObject): void {
     this.drop(o.id);
     const made = this.build(o);
-    if (made.length) this.meshes.set(o.id, made);
+    if (!made.length) return;
+    const visible = this.ui.isVisible(o);
+    made.forEach((m) => m.setEnabled(visible));
+    this.meshes.set(o.id, made);
   }
 
   private build(o: SceneObject): BABYLON.AbstractMesh[] {
@@ -119,7 +202,7 @@ export class View3D {
     if (g.type === "mesh") return [this.surface(o, g.vertices.flat(), g.indices, color)];
     if (g.type === "point") return [this.marker(o.id, g.p, color)];
     if (g.type === "points") return g.positions.map((p, i) => this.marker(`${o.id}#${i}`, p, color, 0.5));
-    return []; // text and notes: panel only in Phase 1
+    return []; // text and notes: labels in 3D come with Phase 3
   }
 
   private lines(id: string, polylines: Vec3[][], color: BABYLON.Color3): BABYLON.AbstractMesh[] {

@@ -11,12 +11,13 @@ import webbrowser
 from pathlib import Path
 from urllib.parse import quote
 
-from .adapt import SURFACE_TYPES, as_vec, scene_extent, subscript, to_objects, with_window
+from .adapt import SURFACE_TYPES, as_vec, indexed, scene_extent, to_objects, with_window
 from .server import PROTOCOL, default_url
-from .spawn import ensure_server, probe
+from .spawn import ensure_server, probe, refused_hint
 
-# Categorical palette that stays readable on a projector, light or dark background.
-PALETTE = ("#d1495b", "#00798c", "#edae49", "#30638e", "#6a4c93", "#2a9d8f", "#e76f51", "#3d405b")
+# Categorical palette: every colour has contrast ≥ 3:1 on the viewer's light (#f7f8fa) and
+# dark (#16181d) backgrounds (spec §3.5, tests/test_viewer.py), so it reads on a projector.
+PALETTE = ("#d1495b", "#00798c", "#c47f00", "#3a7cc2", "#8a5cc2", "#5c8a00", "#b5448f", "#6b7a8f")
 STYLE_KEYS = ("color", "width", "dashed", "opacity")
 EXTRA_KEYS = frozenset({"foci", "center", "axes", "asymptotes", "directrix", "vertex", "isolines", "wire"})
 VIEWS = ("auto", "2d", "3d")
@@ -107,7 +108,7 @@ class Viewer:
             raise TypeError("add() needs at least one object")
         parts: list[dict] = []
         for i, obj in enumerate(objs, start=1):
-            part_label = label if len(objs) == 1 or label is None else f"{label}{subscript(i)}"
+            part_label = label if len(objs) == 1 or label is None else indexed(label, i)
             parts += to_objects(obj, part_label, u=u, v=v)
         return self._commit(parts, label, group, options, u, v)
 
@@ -166,6 +167,8 @@ class Viewer:
             obj["style"] = {"color": previous.get("color") or self._color(), **style}
         if extras:
             obj["extras"] = dict(extras)
+        if part.get("meta"):
+            obj["meta"] = part["meta"]
         _check_serializable(obj)
         return obj
 
@@ -260,8 +263,11 @@ class Viewer:
             return True
         if self.spawn:
             return self._spawn_or_find()
-        self._online = probe(self.url) == "ours"
-        if not self._online:
+        state = probe(self.url)
+        self._online = state == "ours"
+        if state == "refused":
+            self._warn(f"{refused_hint(self.url)}; keeping objects locally (save() still works)")
+        elif not self._online:
             self._warn(f"no geomcore-viewer at {self.url}; keeping objects locally (save() still works)")
         else:
             self._reconnected()

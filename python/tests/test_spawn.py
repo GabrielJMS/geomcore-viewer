@@ -1,14 +1,16 @@
+import json
 import socket
 import threading
 import time
-from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
+from http.server import BaseHTTPRequestHandler, SimpleHTTPRequestHandler, ThreadingHTTPServer
 
 import pytest
 
 from geomcore_viewer import spawn
 from geomcore_viewer.__main__ import main
-from geomcore_viewer.server import DEFAULT_PORT, Server
-from geomcore_viewer.spawn import ensure_server, probe, stop_server
+from geomcore_viewer import Viewer
+from geomcore_viewer.server import APP, DEFAULT_PORT, Server
+from geomcore_viewer.spawn import ensure_server, probe, refused_hint, stop_server
 
 
 def _free_port():
@@ -148,7 +150,7 @@ class _FakeServer:
         ("http://127.0.0.1:8799", ["--port", "8123"], 8123),
         (None, [], DEFAULT_PORT),
         ("  ", [], DEFAULT_PORT),
-        ("http://127.0.0.1", [], DEFAULT_PORT),
+        ("http://127.0.0.1", [], 80),  # no port in the URL means 80, as for the client
     ],
 )
 def test_cli_serve_port_default(monkeypatch, env, argv, expected):
@@ -180,3 +182,79 @@ def test_spawned_server_runs_from_the_home_directory(monkeypatch):
     [(cmd, kwargs)] = calls
     assert kwargs["cwd"] == os.path.expanduser("~")  # not the script's directory, which would stay busy
     assert cmd[-3:] == ["--port", "12345", "--no-browser"]
+
+
+class _Refusing(BaseHTTPRequestHandler):
+    """A geomcore-viewer seen through a tunnel that changed the port: every request gets its 403."""
+
+    def do_GET(self):
+        body = json.dumps({"error": "request is not from this server's own origin", "app": APP}).encode()
+        self.send_response(403)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def log_message(self, *args):
+        pass
+
+
+def test_a_refusing_viewer_gets_the_tunnel_hint():
+    httpd = ThreadingHTTPServer(("127.0.0.1", 0), _Refusing)
+    threading.Thread(target=httpd.serve_forever, daemon=True).start()
+    port = httpd.server_address[1]
+    url = f"http://127.0.0.1:{port}"
+    try:
+        assert probe(url) == "refused"
+        with pytest.raises(RuntimeError, match=f"ssh -L {port}:127.0.0.1:{port} <host>"):
+            ensure_server(url)
+        with pytest.warns(RuntimeWarning, match=f"ssh -L {port}:127.0.0.1:{port} <host>"):
+            Viewer(url=url, spawn=False, open_browser=False).text((0, 0, 0), "hello")
+    finally:
+        httpd.shutdown()
+        httpd.server_close()
+
+
+def test_a_403_cut_short_is_foreign():
+    def refuse_then_hang_up(conn):
+        conn.settimeout(2)
+        request = b""
+        while b"\r\n\r\n" not in request:  # read the whole request, so closing does not reset the connection
+            chunk = conn.recv(4096)
+            if not chunk:
+                return
+            request += chunk
+        conn.sendall(b"HTTP/1.1 403 Forbidden\r\nContent-Type: application/json\r\nContent-Length: 100\r\n\r\n{\"app\"")
+
+    url, srv = _raw_listener(refuse_then_hang_up)
+    try:
+        assert probe(url) == "foreign"
+    finally:
+        srv.close()
+
+
+def test_the_tunnel_hint_keeps_the_port():
+    assert "ssh -L 9000:127.0.0.1:9000 <host>" in refused_hint("http://127.0.0.1:9000")
+    assert "ssh -L 80:127.0.0.1:80 <host>" in refused_hint("http://127.0.0.1")
+
+
+def test_spawning_waits_at_most_three_seconds():
+    import inspect
+
+    assert inspect.signature(ensure_server).parameters["timeout"].default == 3.0
+
+
+@pytest.mark.parametrize("command", ["serve", "stop"])
+def test_cli_reports_a_malformed_environment_url(monkeypatch, capsys, command):
+    monkeypatch.setenv("GEOMCORE_VIEWER_URL", "http://127.0.0.1:87x5")
+    with pytest.raises(SystemExit) as exc:
+        main([command])
+    assert exc.value.code == 2
+    assert "GEOMCORE_VIEWER_URL='http://127.0.0.1:87x5' has a malformed port" in capsys.readouterr().err
+
+
+def test_cli_explicit_port_ignores_a_malformed_environment_url(monkeypatch, capsys):
+    monkeypatch.setenv("GEOMCORE_VIEWER_URL", "http://127.0.0.1:87x5")
+    port = _free_port()
+    main(["stop", "--port", str(port)])
+    assert f"no viewer running at http://127.0.0.1:{port}" in capsys.readouterr().out

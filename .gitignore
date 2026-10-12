@@ -7,3 +7,5 @@ target/
 .DS_Store
 build/
 python/geomcore_viewer/_frontend/
+test-results/
+playwright-report/
