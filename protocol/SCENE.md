@@ -35,8 +35,8 @@ The viewer never computes intersections or any other geometric query.
 | `label` | no | display name (panel, point labels) |
 | `group` | no | panel grouping / visibility toggle |
 | `source` | no | client-side type name, e.g. `Ellipse3D` |
-| `style` | no | `color` (CSS), `width` (px), `dashed`, `opacity` (0–1) |
-| `extras` | no | curves: `foci`, `center`, `axes`, `asymptotes`, `directrix`, `vertex`; surfaces: `isolines: [nu, nv]`, `wire`. Unknown extras are ignored. |
+| `style` | no | `color` (CSS), `width` (px), `dashed`, `opacity` (0–1; surfaces and meshes default to 0.45 when the scene holds a curve, polyline or pcurve, else 1) |
+| `extras` | no | curves: `foci`, `center`, `axes`, `asymptotes`, `directrix`, `vertex`; surfaces: `isolines: [nu, nv]` (or `true` for 12 × 6; drawn at the middle of each cell of the window), `wire` (lines only: the isolines, 24 × 12 by default, and the window's edges). Unknown extras are ignored. |
 | `meta` | no | free-form client data. The Python client sets `tag` (the intersection result's tag, e.g. `"points"`) and `params` (the numbers of the hit, e.g. `[t, s]` for `(t, P, s)`; a non-finite one is `null`); the 2D tooltip shows `params`. |
 
 `view` is `"auto"`, `"2d"` or `"3d"`. Vectors are `[x, y, z]`; a
@@ -64,10 +64,10 @@ unit axes `o, x, y, z` (right-handed, orthonormal).
 | `arrow` | `at`, `vec` | — |
 | `text` | `at`, `text` | — |
 | `note` | `text`, `level?` (`info` / `warn`) | panel only, e.g. `P: ∅ (parallel)` |
+| `pcurve` | `surface`, `curve` | `S(q(t))`: `surface` is a surface object's `id`; `curve` is a `line`, `circle` or `polyline` in z = 0 whose x is u and y is v |
 
 Reserved for when geomcore exposes B-spline getters (clients send
-`polyline` / `mesh` until then): `bspline_curve`, `bspline_surface`,
-`pcurve`.
+`polyline` / `mesh` until then): `bspline_curve`, `bspline_surface`.
 
 Radii (`r`, `a`, `b`, `R`) must be positive and `f` non-zero.
 
@@ -83,6 +83,14 @@ Radii (`r`, `a`, `b`, `R`) must be positive and `f` non-zero.
   viewer draws it over ±the half-size of the scene's view box (1.5 × the
   scene's half-extent, at least 1) and does not flag the object. The Python
   client always fills `window` itself, from the objects already added.
+- A `pcurve` takes its surface's window. A `line` or `circle` is clipped
+  to it in the directions that do not wrap, so a helix on a cylinder winds
+  round the seam until it leaves the v window; one those leave unbounded
+  (the line v = 3 a circle gives on a cylinder) is clipped to the whole
+  window, one turn. A `polyline` is drawn whole, point to point on the
+  surface. `range` is ignored. A pcurve adds nothing to the view box, and
+  while its `surface` names no surface it is kept but not drawn, and the
+  panel flags it.
 
 ## Runs
 

@@ -53,6 +53,7 @@ from this repo, as in the Development section).
 | `gv.Viewer(title, view="auto"\|"2d"\|"3d", keep=False)` | a scene (new run) |
 | `view.add(*objs, label=, group=, color=, width=, dashed=, opacity=, u=, v=, foci=, asymptotes=, …)` | show objects → `Handle` / list |
 | `handle.update(color=…)`, `handle.remove()` | change or remove one object |
+| `view.pcurve(curve, on=surface)` | a `Line2D`, `Circle2D` (e.g. `circle.parametrize_on(cyl)`) or `(u, v)` pairs drawn on a surface already added |
 | `view.polyline(pts)`, `view.mesh(v, i)`, `view.arrow(at, vec)`, `view.text(at, s)` | raw geometry |
 | `view.clear()`, `view.save(path)`, `view.open()` | housekeeping |
 | `gv.add(...)`, `gv.clear()` | same, on the most recent viewer (handy in `pdb`) |
@@ -88,6 +89,7 @@ keys do nothing for it, and the failure stays in the header's status line.
 | `P` | presentation mode: header and panel hidden, lines and labels ×1.5 |
 | `T` | light / dark theme (remembered by the browser) |
 | `2` / `3` | plane view / 3D view |
+| `U` | show / hide the (u,v) pane |
 | `Esc` | leave presentation mode, else clear the selection |
 
 In the plane view, hover an object for its type, label, parameter `t`, and
@@ -96,15 +98,26 @@ In the plane view, hover an object for its type, label, parameter `t`, and
 scroll to zoom. The panel's checkboxes hide objects and whole groups, and
 stay off when the script runs again. Click a row to frame that object.
 
+In 3D, drag to orbit, right-drag to pan and scroll to zoom; the toolbar
+switches between perspective and orthographic and snaps to the top, front,
+right and iso views. Lines keep their pixel width at any distance, and
+surfaces turn translucent when the scene also holds curves. Hover a curve
+for its parameter `t` and point, a surface for its `(u, v)`.
+
+The (u,v) pane, an inset of the 3D view, shows the selected surface (or the
+surface of the selected pcurve, or of the first pcurve in the scene): its
+window, seams and the pcurves on it. Hovering it puts a marker on the
+surface in 3D; hovering the surface or a pcurve in 3D puts one in the pane.
+
 ## Layout
 
 | Path | What |
 |---|---|
 | `protocol/SCENE.md` | protocol v2: the JSON every client and the viewer speak |
 | `python/geomcore_viewer/` | client (`viewer.py`), geomcore adapter (`adapt.py`), server (`server.py`, `spawn.py`) |
-| `frontend/` | Vite + TypeScript viewer (Babylon.js 3D, PixiJS 2D); `src/geom/` is the evaluator core, `src/view2d/` the plane view |
+| `frontend/` | Vite + TypeScript viewer (Babylon.js 3D, PixiJS 2D); `src/geom/` is the evaluator core, `src/view2d/` the plane view, `src/view3d/` the 3D view, `src/viewuv/` the (u,v) pane |
 | `clients/rust/` | Rust client (protocol v1 until phase 4 of the v2 plan) |
-| `examples/` | `conics_2d.py`, `quadrics_3d.py` |
+| `examples/` | `conics_2d.py`, `quadrics_3d.py`, `pcurve.py` (each takes `--save <file>`) |
 
 ## Development
 
