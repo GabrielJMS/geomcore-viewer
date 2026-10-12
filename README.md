@@ -28,9 +28,10 @@ view.add(C.intersect_ellipse(E), label="P")   # → P₁, P₂
   inside one process (`pdb`, IPython, Jupyter) every `gv.add(x)` lands in the
   same scene. Re-adding a label updates that object instead of duplicating it.
 - **Exact.** Objects travel as analytic definitions (frame + radii); the
-  viewer evaluates them with geomcore's own parametrizations. Lines,
-  parabolas and hyperbolas are drawn across 1.5× the scene's extent (exact
-  edge-to-edge clipping comes with the Phase 2 plane view).
+  viewer evaluates them with geomcore's own parametrizations. The plane view
+  clips lines, parabolas and hyperbolas to the window in closed form, so they
+  run edge to edge at any zoom; the 3D view draws them across 1.5× the
+  scene's extent.
 - **Static too.** `view.save("scene.json")`, then open the hosted viewer with
   `?scene=<url>` or drag-drop the file onto it.
 
@@ -65,8 +66,33 @@ The server listens on `http://127.0.0.1:8765` by default. If that port is
 busy, set `GEOMCORE_VIEWER_URL=http://127.0.0.1:<other port>` (every script
 and `gv.add` picks it up; a started server listens on that port) or pass
 `gv.Viewer(url=...)`. An explicit `url=` wins over the variable. A blank
-variable counts as unset. `geomcore-viewer serve` and `stop` take their default
-port from the same variable; `--port` overrides it.
+variable counts as unset. A URL without a port means port 80, as `http://`
+says. `geomcore-viewer serve` and `stop` take their default port from the same
+variable; `--port` overrides it.
+
+The server only answers requests addressed to its own `127.0.0.1:<port>` (a
+browser safety rule), so to watch a remote machine's viewer through SSH keep
+the same port on both ends: `ssh -L 8765:127.0.0.1:8765 <host>`, then open
+`http://127.0.0.1:8765`.
+
+## The page
+
+The view shows the plane z = 0 when every object lies in it, else 3D; the
+header's 2D/3D switch (or the scene's `view`) overrides that.
+
+| Key | Does |
+|---|---|
+| `F` | fit the scene (and follow it again as it changes) |
+| `P` | presentation mode: header and panel hidden, lines and labels ×1.5 |
+| `T` | light / dark theme (remembered by the browser) |
+| `2` / `3` | plane view / 3D view |
+| `Esc` | leave presentation mode, else clear the selection |
+
+In the plane view, hover an object for its type, label, parameter `t`, and
+`(x, y)`; intersection points also show the parameters of the hit
+(`meta.params`). Click a point to copy its coordinates. Drag to pan and
+scroll to zoom. The panel's checkboxes hide objects and whole groups, and
+stay off when the script runs again. Click a row to frame that object.
 
 ## Layout
 
@@ -74,7 +100,7 @@ port from the same variable; `--port` overrides it.
 |---|---|
 | `protocol/SCENE.md` | protocol v2: the JSON every client and the viewer speak |
 | `python/geomcore_viewer/` | client (`viewer.py`), geomcore adapter (`adapt.py`), server (`server.py`, `spawn.py`) |
-| `frontend/` | Vite + TypeScript viewer (Babylon.js 3D, PixiJS 2D); `src/geom/` is the evaluator core |
+| `frontend/` | Vite + TypeScript viewer (Babylon.js 3D, PixiJS 2D); `src/geom/` is the evaluator core, `src/view2d/` the plane view |
 | `clients/rust/` | Rust client (protocol v1 until phase 4 of the v2 plan) |
 | `examples/` | `conics_2d.py`, `quadrics_3d.py` |
 
@@ -84,6 +110,7 @@ port from the same variable; `--port` overrides it.
 python3 -m venv .venv && .venv/bin/pip install pytest
 PYTHONPATH=python:../geomcore/geomcore-py .venv/bin/python -m pytest python/tests -q
 cd frontend && npm ci && npm test && npm run build && cd ..
+cd frontend && npx playwright install chromium && npm run e2e && cd ..   # browser tests (port 8797)
 scripts/bundle-frontend.sh          # copy the build into the Python package
 scripts/refresh-fixtures.sh         # re-vendor geomcore's golden fixtures
 ```

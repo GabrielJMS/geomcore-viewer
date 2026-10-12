@@ -7,13 +7,15 @@
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
-    "test": "vitest run"
+    "test": "vitest run",
+    "e2e": "playwright test"
   },
   "dependencies": {
     "@babylonjs/core": "^8.0.0",
     "pixi.js": "^8.0.0"
   },
   "devDependencies": {
+    "@playwright/test": "^1.64.0",
     "typescript": "^5.5.0",
     "vite": "^6.0.0",
     "vitest": "^3.2.7"
