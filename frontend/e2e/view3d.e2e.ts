@@ -54,3 +54,23 @@ test("the 3D toolbar snaps the camera and switches to orthographic", async ({ pa
   expect((await camera3d(page)).ortho).toBe(true);
   await expect.poll(() => pixelsLike(page, "#c47f00")).toBeGreaterThan(100);
 });
+
+test("hovering a 3D curve highlights it and shows its parameter and point", async ({ page, request }) => {
+  await postScene(request, "quadrics_3d");
+  await page.goto("/");
+  await expect(page.locator("#count")).toHaveText("7 objects");
+  await expect.poll(() => pixelsLike(page, "#c47f00")).toBeGreaterThan(100); // drawn, so the camera has its first frame
+  const [x, y] = await page.evaluate(() => {
+    const gv = (window as unknown as { __gv: { view3d: { screenOf(p: number[]): number[]; canvas: HTMLCanvasElement } } }).__gv;
+    const s = gv.view3d.screenOf([0, -2, Math.sqrt(5)]); // SY₁: the circle of radius 2 at z = √5
+    const r = gv.view3d.canvas.getBoundingClientRect();
+    return [r.left + s[0], r.top + s[1]];
+  });
+  await page.mouse.move(x, y);
+  const tooltip = page.locator("#view3d .tooltip");
+  await expect(tooltip).toBeVisible();
+  await expect(tooltip.locator(".head")).toHaveText("SY₁ · circle");
+  await expect(tooltip).toContainText("t = ");
+  await expect(tooltip).toContainText(", 2.236)"); // on SY₁, whatever t the pointer lands on
+  await expect(page.locator("#view3d .labels .label.lit")).toHaveText("SY₁");
+});

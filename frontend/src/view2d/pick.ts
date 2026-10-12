@@ -18,6 +18,8 @@ export interface Hit {
   t: number | null;
   /** Which dot of a `points` object was hit. */
   index: number | null;
+  /** Which of the item's polylines was hit (the 3D view maps the hit back through it). */
+  line?: number;
 }
 
 /** Points win a near-tie with a curve passing under them. */
@@ -36,7 +38,7 @@ export function pickNearest(items: Pickable[], x: number, y: number, radius = 8)
         best = { id: item.id, dist: d, at: dot.at, t: null, index: dot.index };
       }
     }
-    for (const line of item.polylines) {
+    item.polylines.forEach((line, li) => {
       const pts = line.pts;
       for (let i = 0; i + 1 < pts.length; i++) {
         const d = segmentDistance(p, pts[i], pts[i + 1]);
@@ -55,9 +57,10 @@ export function pickNearest(items: Pickable[], x: number, y: number, radius = 8)
           at: [a[0] + s * dx, a[1] + s * dy],
           t: ts ? ts[i] + s * (ts[i + 1] - ts[i]) : null,
           index: null,
+          line: li,
         };
       }
-    }
+    });
   }
   return best;
 }

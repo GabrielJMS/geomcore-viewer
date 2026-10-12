@@ -2,21 +2,27 @@ import * as BABYLON from "@babylonjs/core";
 import { Changes, FrameScheduler } from "../frame";
 import { sameBox, sceneBounds, viewBox } from "../geom/bounds";
 import { isPcurve } from "../geom/types";
-import type { Box, Vec3 } from "../geom/vec";
+import type { Box, Vec2, Vec3 } from "../geom/vec";
 import type { SceneObject } from "../protocol";
 import type { Store } from "../store";
+import { LabelItem, LabelLayer, TextMeasure } from "../ui/labels";
 import type { UiEvent, UiState } from "../ui/state";
 import { PALETTES, Palette, mixHex } from "../ui/theme";
-import { EXTRA_MIX } from "../view2d/render";
+import { placeLabels } from "../view2d/placement";
+import { EXTRA_MIX, TextKind } from "../view2d/render";
 import { SNAPS, Snap, cameraScale, fitRadius, orthoExtents, pixelSize } from "./camera";
-import { Lines3D, Markers3D, ObjectDraw3D, hasCurves, objectDraw3D, screenPx } from "./render";
-import { ground } from "./scene";
+import { Hit3D, Project, describeHit3D, pickProjected, surfaceUv } from "./pick";
+import { Lines3D, Markers3D, ObjectDraw3D, Text3D, hasCurves, objectDraw3D, screenPx } from "./render";
+import { Ground, ground } from "./scene";
 
 const v3 = (p: Vec3) => new BABYLON.Vector3(p[0], p[1], p[2]);
 const color3 = (hex: string) => BABYLON.Color3.FromHexString(hex);
 /** GreasedLine's width is twice what it covers on screen (measured: width 6 draws 3 px). */
 const GREASED_PER_PX = 2;
 const AXIS_PX = 2;
+const LABEL_PX = 13;
+/** Labels of the hovered or selected object first, then text, points, curves and surfaces, extras last. */
+const KIND_ORDER: Record<TextKind, number> = { text: 0, point: 1, curve: 2, extra: 3 };
 
 /** One object's Babylon meshes, kept with what they were built from (highlight and marker sizes change per frame). */
 interface Built {
@@ -50,6 +56,13 @@ export class View3D {
   private changes = new Changes();
   private frame = new FrameScheduler(() => this.flush());
   private toolbar: HTMLDivElement;
+  private axes: Ground["axes"] = [];
+  private labels: LabelLayer;
+  private tooltip: HTMLDivElement;
+  private measure = new TextMeasure();
+  /** Labels follow the camera: re-placed after a frame in which it (or the scene) moved. */
+  private labelsDirty = true;
+  private hover: Hit3D | null = null;
 
   constructor(
     private store: Store,
@@ -79,7 +92,15 @@ export class View3D {
     // (group 1) over it, so curves lying on z = 0 are not speckled by the lines they cross.
     this.scene.setRenderingAutoClearDepthStencil(1, false, false, false);
     this.scene.onBeforeRenderObservable.add(() => this.beforeRender());
+    this.scene.onAfterRenderObservable.add(() => this.afterRender());
+    this.camera.onViewMatrixChangedObservable.add(() => (this.labelsDirty = true));
     this.toolbar = this.makeToolbar();
+    this.labels = new LabelLayer(host);
+    this.tooltip = document.createElement("div");
+    this.tooltip.className = "tooltip";
+    this.tooltip.hidden = true;
+    host.appendChild(this.tooltip);
+    this.listenHover();
     store.onChange((ev) => {
       if (ev.type === "meta") return;
       this.changes.note(ev);
@@ -99,6 +120,11 @@ export class View3D {
   get cameraState(): { alpha: number; beta: number; radius: number; target: Vec3; ortho: boolean } {
     const t = this.camera.target;
     return { alpha: this.camera.alpha, beta: this.camera.beta, radius: this.camera.radius, target: [t.x, t.y, t.z], ortho: this.ortho };
+  }
+
+  /** Debug and e2e access: where a world point is drawn on the canvas (null behind the camera). */
+  screenOf(p: Vec3): Vec2 | null {
+    return this.projector()(p);
   }
 
   /** Render (and apply pending changes) only while the 3D view is the one shown. */
@@ -159,6 +185,7 @@ export class View3D {
 
   private resize(): void {
     this.engine.resize();
+    this.labelsDirty = true;
     const resolution = new BABYLON.Vector2(this.engine.getRenderWidth(), this.engine.getRenderHeight());
     for (const b of this.built.values()) for (const l of b.lines) l.mesh.greasedLineMaterial!.resolution = resolution;
     for (const m of this.groundMeshes) {
@@ -201,6 +228,7 @@ export class View3D {
       this.framePending = false;
       this.frameSelected();
     }
+    if (this.hover && !this.built.has(this.hover.id)) this.setHover(null, null);
   }
 
   private uiChanged(ev: UiEvent): void {
@@ -213,6 +241,7 @@ export class View3D {
         const visible = o ? this.ui.isVisible(o) : false;
         b.meshes.forEach((m) => m.setEnabled(visible));
       }
+      this.labelsDirty = true;
     } else if (ev === "selection") {
       this.applyHighlight();
       // The radius depends on the pane's aspect ratio: a hidden or unsized canvas would get a wrong one, so wait for a flush.
@@ -220,6 +249,7 @@ export class View3D {
       this.frame.request();
     } else if (ev === "presenting") {
       this.applyHighlight();
+      this.labelsDirty = true;
     } else if (ev === "autofit" && this.ui.autoFit) {
       this.fitRequested();
     }
@@ -287,7 +317,7 @@ export class View3D {
   }
 
   private isLit(id: string): boolean {
-    return id === this.ui.selected;
+    return id === this.ui.selected || id === this.hover?.id;
   }
 
   /** Line widths and surface glow for the selection and presentation mode. */
@@ -311,9 +341,129 @@ export class View3D {
     this.buildGround();
   }
 
+  /** World → canvas pixels with the camera of the last frame; null behind a perspective camera. */
+  private projector(): Project {
+    const vp = this.camera.viewport.toGlobal(this.engine.getRenderWidth(), this.engine.getRenderHeight());
+    const transform = this.scene.getTransformMatrix();
+    const eye = this.camera.position;
+    const fwd = this.camera.getForwardRay(1).direction;
+    const near = this.camera.minZ;
+    const out = new BABYLON.Vector3();
+    return (p) => {
+      if (!this.ortho && (p[0] - eye.x) * fwd.x + (p[1] - eye.y) * fwd.y + (p[2] - eye.z) * fwd.z <= near) return null;
+      BABYLON.Vector3.ProjectToRef(v3(p), BABYLON.Matrix.IdentityReadOnly, transform, vp, out);
+      return [out.x, out.y];
+    };
+  }
+
+  private afterRender(): void {
+    if (!this.labelsDirty) return;
+    this.labelsDirty = false;
+    this.renderLabels();
+  }
+
+  /** A label's size on screen: its measured width plus a margin, by the line height of `.labels` (1.35). */
+  private textSize(text: string, px: number, weight = 400): { w: number; h: number } {
+    return { w: Math.ceil(this.measure.width(text, px, weight)) + 2, h: Math.ceil(px * 1.35) };
+  }
+
+  /** Spec §5.3: labels as a projected DOM overlay, placed like the plane view's; the axis letters at the triad's tips. */
+  private renderLabels(): void {
+    const project = this.projector();
+    const px = LABEL_PX * this.widthScale;
+    const texts: (Text3D & { s: [number, number] })[] = [];
+    for (const [id, b] of this.built) {
+      const o = this.store.objects.get(id);
+      if (!o || !this.ui.isVisible(o)) continue;
+      for (const t of b.draw.texts) {
+        const s = project(t.at);
+        if (s) texts.push({ ...t, s });
+      }
+    }
+    const rank = (t: Text3D) => (this.isLit(t.id) ? -1 : KIND_ORDER[t.kind]);
+    texts.sort((a, b) => rank(a) - rank(b));
+    const sizes = texts.map((t) => this.textSize(t.text, px, 600));
+    const requests = texts.map((t, i) => ({ key: t.key, ax: t.s[0], ay: t.s[1], ...sizes[i], fixed: t.kind === "text" }));
+    const byKey = new Map(texts.map((t, i) => [t.key, { t, size: sizes[i] }]));
+    const w = this.canvas.clientWidth;
+    const h = this.canvas.clientHeight;
+    const palette = this.palette;
+    const items: LabelItem[] = placeLabels(requests, w, h).map((p) => {
+      const { t } = byKey.get(p.key)!;
+      const className = t.kind === "extra" ? "label extra" : this.isLit(t.id) ? "label lit" : "label";
+      return { key: p.key, text: t.text, left: p.left, top: p.top, className, fontPx: px, color: t.color ?? palette.text };
+    });
+    for (const axis of this.axes) {
+      const s = project(axis.to);
+      if (s) items.push({ key: `axis:${axis.name}`, text: axis.name, left: s[0] + 3, top: s[1] - px * 1.4, className: "tick", fontPx: px, color: axis.color });
+    }
+    this.labels.render(items);
+  }
+
+  /** What is under the pointer: the nearest curve or point within 8 px, else the surface hit by the ray. */
+  private pick(x: number, y: number): Hit3D | null {
+    const items = [];
+    for (const [id, b] of this.built) {
+      const o = this.store.objects.get(id);
+      if (o && this.ui.isVisible(o)) items.push(b.draw.pick);
+    }
+    const near = pickProjected(items, this.projector(), x, y);
+    if (near) return near;
+    const info = this.scene.pick(x, y, (m) => m.isEnabled() && m.metadata?.id !== undefined);
+    if (!info?.hit || !info.pickedMesh || !info.pickedPoint) return null;
+    const id: string = info.pickedMesh.metadata.id;
+    const grid = this.built.get(id)?.draw.surface?.grid;
+    const st = info.getTextureCoordinates();
+    const p = info.pickedPoint;
+    return { id, dist: 0, at: [p.x, p.y, p.z], t: null, index: null, uv: grid && st ? surfaceUv(grid, [st.x, st.y]) : null };
+  }
+
+  /** Highlight the hovered object and show its tooltip (null hides both). */
+  private setHover(hit: Hit3D | null, pointer: [number, number] | null): void {
+    const changed = hit?.id !== this.hover?.id;
+    this.hover = hit;
+    if (changed) {
+      this.applyHighlight();
+      this.labelsDirty = true;
+    }
+    const o = hit ? this.store.objects.get(hit.id) : undefined;
+    if (!hit || !o || !pointer) {
+      this.tooltip.hidden = true;
+      return;
+    }
+    this.tooltip.replaceChildren(
+      ...describeHit3D(o, hit, (id) => this.store.objects.get(id)?.geom).map((line, i) => {
+        const div = document.createElement("div");
+        if (i === 0) div.className = "head";
+        div.textContent = line;
+        return div;
+      }),
+    );
+    this.tooltip.hidden = false;
+    const [x, y] = pointer;
+    const width = this.canvas.clientWidth;
+    const left = x + 14 + this.tooltip.offsetWidth > width ? x - 14 - this.tooltip.offsetWidth : x + 14;
+    this.tooltip.style.transform = `translate(${Math.max(0, left)}px, ${Math.max(0, y + 14)}px)`;
+  }
+
+  private listenHover(): void {
+    this.canvas.addEventListener("pointermove", (ev) => {
+      if (ev.buttons) {
+        this.setHover(null, null); // orbiting or panning
+        return;
+      }
+      const r = this.canvas.getBoundingClientRect();
+      const x = ev.clientX - r.left;
+      const y = ev.clientY - r.top;
+      this.setHover(this.pick(x, y), [x, y]);
+    });
+    this.canvas.addEventListener("pointerleave", () => this.setHover(null, null));
+  }
+
   private drop(id: string): void {
     this.built.get(id)?.meshes.forEach(disposeMesh);
     this.built.delete(id);
+    this.labelsDirty = true;
   }
 
   private show(o: SceneObject): void {
@@ -406,6 +556,8 @@ export class View3D {
   private buildGround(): void {
     this.groundMeshes.forEach(disposeMesh);
     const g = ground(this.box);
+    this.axes = g.axes;
+    this.labelsDirty = true;
     const palette = this.palette;
     const lineSystem = (name: string, lines: Vec3[][], color: string) => {
       const mesh = BABYLON.MeshBuilder.CreateLineSystem(name, { lines: lines.map((l) => l.map(v3)) }, this.scene);
