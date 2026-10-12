@@ -14,6 +14,14 @@ export interface PlacedLabel {
   top: number;
 }
 
+/** A label as drawn: top-left corner and size, in screen pixels. */
+export interface LabelBox {
+  left: number;
+  top: number;
+  w: number;
+  h: number;
+}
+
 interface Box {
   l: number;
   t: number;
@@ -43,6 +51,7 @@ function candidates(q: LabelRequest): [number, number][] {
 }
 
 const overlaps = (a: Box, b: Box): boolean => a.l < b.r && b.l < a.r && a.t < b.b && b.t < a.b;
+const boxOf = (q: LabelBox): Box => ({ l: q.left, t: q.top, r: q.left + q.w, b: q.top + q.h });
 
 /**
  * Greedy placement (spec §5.2): requests in order, each at the first candidate that stays
@@ -68,4 +77,13 @@ export function placeLabels(requests: LabelRequest[], width: number, height: num
     }
   }
   return out;
+}
+
+/** Object labels win over the grid's: the tick labels whose box overlaps a placed label's are left out. */
+export function uncoveredTicks<T extends LabelBox>(ticks: T[], labels: LabelBox[]): T[] {
+  const taken = labels.map(boxOf);
+  return ticks.filter((tick) => {
+    const box = boxOf(tick);
+    return !taken.some((o) => overlaps(o, box));
+  });
 }

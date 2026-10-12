@@ -9,7 +9,7 @@ import type { UiEvent, UiState } from "../ui/state";
 import { PALETTES, Palette } from "../ui/theme";
 import { Camera2D, fitCamera, panBy, resizeCamera, shouldRefit, visibleRect, worldToScreen, zoomAt } from "./camera";
 import { Hit, pickNearest } from "./pick";
-import { placeLabels } from "./placement";
+import { LabelBox, placeLabels, uncoveredTicks } from "./placement";
 import { formatTick, gridSpacing, ticks } from "./plane";
 import { DrawList, Stroke, buildDrawList, describeHit } from "./render";
 
@@ -20,6 +20,9 @@ const MINOR_MIN_PX = 8;
 const DRAG_PX = 3;
 const WHEEL_ZOOM = 0.0015;
 const EMPTY: DrawList = { strokes: [], dots: [], texts: [], pickables: [] };
+
+/** A DOM label with its box on screen, so tick labels can give way to object labels. */
+type BoxedLabel = LabelItem & LabelBox;
 
 /** The plane z = 0 (spec §5.2): PixiJS strokes and dots, DOM labels, pan, zoom, hover and click. */
 export class View2D {
@@ -182,12 +185,13 @@ export class View2D {
     });
     if (this.highlight && !this.list.pickables.some((p) => p.id === this.highlight)) this.hover(null);
     this.paint();
-    this.labels.render([...tickLabels, ...this.placeTexts()]);
+    const texts = this.placeTexts();
+    this.labels.render([...uncoveredTicks(tickLabels, texts), ...texts]);
     this.app.render();
   }
 
   /** Minor and major grid lines, the axes, and the tick labels pinned inside the pane. */
-  private drawGrid(palette: Palette): LabelItem[] {
+  private drawGrid(palette: Palette): BoxedLabel[] {
     const g = this.grid.clear();
     const c = this.cam;
     const r = visibleRect(c);
@@ -215,19 +219,20 @@ export class View2D {
     const px = TICK_PX * this.widthScale;
     const clamp = (v: number, lo: number, hi: number) => Math.min(Math.max(v, lo), Math.max(lo, hi));
     const labelTop = clamp(oy + 4, 2, c.height - px * 1.4 - 2); // the x labels follow the x axis, kept on screen
-    const items: LabelItem[] = [];
+    const items: BoxedLabel[] = [];
     for (const x of xs) {
       const text = formatTick(x, major);
       if (text === "0") continue; // the origin is labelled once, on the y axis
       const left = worldToScreen(c, x, 0)[0] + 3;
-      items.push({ key: `tx:${text}`, text, left, top: labelTop, className: "tick", fontPx: px, color: palette.axis });
+      const size = this.textSize(text, px);
+      items.push({ key: `tx:${text}`, text, left, top: labelTop, ...size, className: "tick", fontPx: px, color: palette.axis });
     }
     for (const y of ys) {
       const text = formatTick(y, major);
-      const w = this.measure.width(text, px);
-      const left = clamp(ox + 4, 2, c.width - w - 2);
+      const size = this.textSize(text, px);
+      const left = clamp(ox + 4, 2, c.width - size.w);
       const top = worldToScreen(c, 0, y)[1] - px * 1.4;
-      items.push({ key: `ty:${text}`, text, left, top, className: "tick", fontPx: px, color: palette.axis });
+      items.push({ key: `ty:${text}`, text, left, top, ...size, className: "tick", fontPx: px, color: palette.axis });
     }
     return items;
   }
@@ -252,24 +257,27 @@ export class View2D {
     }
   }
 
+  /** A label's size on screen: its measured width plus a margin, by the line height of `.labels` (1.35). */
+  private textSize(text: string, px: number, weight = 400): { w: number; h: number } {
+    return { w: Math.ceil(this.measure.width(text, px, weight)) + 2, h: Math.ceil(px * 1.35) };
+  }
+
   /** Object labels where they do not overlap (spec §5.2), as DOM items. */
-  private placeTexts(): LabelItem[] {
+  private placeTexts(): BoxedLabel[] {
     const px = LABEL_PX * this.widthScale;
-    const h = Math.ceil(px * 1.35);
-    const byKey = new Map(this.list.texts.map((t) => [t.key, t]));
     const requests = this.list.texts.map((t) => ({
       key: t.key,
       ax: t.at[0],
       ay: t.at[1],
-      w: Math.ceil(this.measure.width(t.text, px, 600)) + 2,
-      h,
+      ...this.textSize(t.text, px, 600),
       fixed: t.kind === "text",
     }));
+    const byKey = new Map(this.list.texts.map((t, i) => [t.key, { t, size: requests[i] }]));
     return placeLabels(requests, this.cam.width, this.cam.height).map((p) => {
-      const t = byKey.get(p.key)!;
+      const { t, size } = byKey.get(p.key)!;
       const lit = t.id === this.highlight || t.id === this.ui.selected;
       const className = t.kind === "extra" ? "label extra" : lit ? "label lit" : "label";
-      return { key: p.key, text: t.text, left: p.left, top: p.top, className, fontPx: px, color: t.color };
+      return { key: p.key, text: t.text, left: p.left, top: p.top, w: size.w, h: size.h, className, fontPx: px, color: t.color };
     });
   }
 

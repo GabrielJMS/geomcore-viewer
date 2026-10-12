@@ -28,6 +28,18 @@ const strokeSpan = (page: Page, id: string) =>
 const nextFrame = (page: Page) =>
   page.evaluate(() => new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r()))));
 
+/** Pairs of (tick label, object label) whose boxes on the page overlap by more than a pixel. */
+const ticksUnderLabels = (page: Page) =>
+  page.evaluate(() => {
+    const boxes = (sel: string) => [...document.querySelectorAll(sel)].map((e) => ({ text: e.textContent, r: e.getBoundingClientRect() }));
+    const labels = boxes(".labels .label");
+    return boxes(".labels .tick").flatMap((t) =>
+      labels
+        .filter(({ r }) => t.r.left + 1 < r.right && r.left + 1 < t.r.right && t.r.top + 1 < r.bottom && r.top + 1 < t.r.bottom)
+        .map((l) => `${t.text} under ${l.text}`),
+    );
+  });
+
 const point = (id: string, x: number, y: number, group?: string) => ({
   id,
   label: id,
@@ -47,6 +59,7 @@ test("the sample scene renders in the plane view", async ({ page }) => {
   await expect(page.locator(".labels .label", { hasText: "P₁ (2.994, -0.123)" })).toBeVisible();
   await expect(page.locator(".labels .label.extra", { hasText: "F₁" })).toHaveCount(1);
   await expect.poll(async () => (await strokeSpan(page, "L")).n).toBeGreaterThan(1);
+  expect(await ticksUnderLabels(page)).toEqual([]);
 });
 
 test("zooming far out keeps line L spanning the view", async ({ page }) => {

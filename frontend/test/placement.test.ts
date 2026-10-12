@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { LabelRequest, MAX_ATTEMPTS, MAX_LABELS, placeLabels } from "../src/view2d/placement";
+import { LabelRequest, MAX_ATTEMPTS, MAX_LABELS, placeLabels, uncoveredTicks } from "../src/view2d/placement";
 
 const req = (key: string, ax: number, ay: number, extra: Partial<LabelRequest> = {}): LabelRequest => ({
   key,
@@ -68,5 +68,20 @@ describe("placeLabels", () => {
     const keys = placeLabels(many, 1e6, 1e6).map((p) => Number(p.key.slice(1)));
     expect(keys).toHaveLength(MAX_LABELS);
     expect(Math.max(...keys)).toBeLessThan(MAX_ATTEMPTS);
+  });
+});
+
+describe("uncoveredTicks", () => {
+  const tick = (key: string, left: number, top: number) => ({ key, left, top, w: 24, h: 15 });
+
+  it("drops the tick labels an object label covers and keeps the rest", () => {
+    const label = { left: 300, top: 290, w: 120, h: 18 }; // "P₁ (2.994, -0.123)" over the x axis ticks
+    const ticks = [tick("3.0", 290, 300), tick("3.2", 350, 300), tick("3.4", 410, 300), tick("3.6", 470, 300), tick("1", 350, 100)];
+    expect(uncoveredTicks(ticks, [label]).map((t) => t.key)).toEqual(["3.6", "1"]);
+  });
+
+  it("keeps a tick that only touches a label's edge", () => {
+    expect(uncoveredTicks([tick("a", 100, 100)], [{ left: 124, top: 100, w: 50, h: 15 }])).toHaveLength(1);
+    expect(uncoveredTicks([tick("a", 100, 100)], [])).toHaveLength(1);
   });
 });
