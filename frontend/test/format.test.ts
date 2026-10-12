@@ -12,6 +12,12 @@ describe("format", () => {
     expect(fmtNum(0.785398, 4)).toBe("0.7854");
   });
 
+  it("keeps the exponent of numbers too large for toFixed", () => {
+    expect(fmtNum(1.2e30)).toBe("1.2e+30");
+    expect(fmtNum(-1e21)).toBe("-1e+21");
+    expect(fmtNum(1e20)).toBe("100000000000000000000");
+  });
+
   it("writes plane points without z", () => {
     expect(fmtPoint([1.84, 1.62, 0])).toBe("(1.84, 1.62)");
     expect(fmtPoint([1, -2, 0.5])).toBe("(1, -2, 0.5)");

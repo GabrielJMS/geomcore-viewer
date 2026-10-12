@@ -2,6 +2,7 @@ import type { Vec3 } from "../geom/vec";
 
 /** A number with at most `decimals` decimals, trailing zeros dropped, never "-0". */
 export function fmtNum(v: number, decimals = 3): string {
+  if (Math.abs(v) >= 1e21) return String(v); // toFixed writes an exponent there, which the trim below would cut
   const s = v.toFixed(decimals);
   const trimmed = s.includes(".") ? s.replace(/\.?0+$/, "") : s;
   return trimmed === "-0" ? "0" : trimmed;
