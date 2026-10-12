@@ -3,9 +3,16 @@
 version = 4
 
 [[package]]
+name = "geomcore"
+version = "0.28.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7619a27e2cbad3842687fce6bcdb0cbd0fc1ed966a961d2953f9eec058856a4a"
+
+[[package]]
 name = "geomcore-viewer"
 version = "0.2.0"
 dependencies = [
+ "geomcore",
  "serde_json",
 ]
 

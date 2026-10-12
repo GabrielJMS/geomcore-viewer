@@ -7,5 +7,10 @@ description = "Rust client for the geomcore-viewer live browser viewer (scene pr
 repository = "https://github.com/GabrielJMS/geomcore-viewer"
 
 
+[features]
+# Convert geomcore's curves, surfaces and points to `Geom` (needs Rust 1.85+, geomcore's edition 2024).
+geomcore = ["dep:geomcore"]
+
 [dependencies]
 serde_json = "1"
+geomcore = { version = "0.28", optional = true }
