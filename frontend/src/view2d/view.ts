@@ -7,7 +7,7 @@ import type { Store, StoreEvent } from "../store";
 import { LabelItem, LabelLayer, TextMeasure } from "../ui/labels";
 import type { UiEvent, UiState } from "../ui/state";
 import { PALETTES, Palette } from "../ui/theme";
-import { Camera2D, fitCamera, panBy, resizeCamera, visibleRect, worldToScreen, zoomAt } from "./camera";
+import { Camera2D, fitCamera, panBy, resizeCamera, shouldRefit, visibleRect, worldToScreen, zoomAt } from "./camera";
 import { Hit, pickNearest } from "./pick";
 import { placeLabels } from "./placement";
 import { formatTick, gridSpacing, ticks } from "./plane";
@@ -31,6 +31,8 @@ export class View2D {
   private cam: Camera2D = fitCamera(null, 0, 0);
   private userMoved = false;
   private sceneChanged = true;
+  /** A "fit" waiting for the next drawn frame (which may come only once the view is shown). */
+  private fitPending = false;
   private framePending = false;
   private list: DrawList = EMPTY;
   private highlight: string | null = null;
@@ -98,7 +100,7 @@ export class View2D {
   /** The "fit" button or key, or auto-fit turned back on: frame the scene and follow it again. */
   fitRequested(): void {
     this.userMoved = false;
-    this.sceneChanged = true;
+    this.fitPending = true;
     this.frame.request();
   }
 
@@ -153,9 +155,16 @@ export class View2D {
     const height = this.host.clientHeight;
     if (!this.ready || !this.active || width === 0 || height === 0) return;
     if (this.app.screen.width !== width || this.app.screen.height !== height) this.app.renderer.resize(width, height);
-    const refit = this.ui.autoFit && !this.userMoved && (this.sceneChanged || this.cam.width !== width || this.cam.height !== height);
+    const refit = shouldRefit({
+      fitRequested: this.fitPending,
+      autoFit: this.ui.autoFit,
+      userMoved: this.userMoved,
+      sceneChanged: this.sceneChanged,
+      resized: this.cam.width !== width || this.cam.height !== height,
+    });
     this.cam = refit ? fitCamera(this.planarBounds(), width, height) : resizeCamera(this.cam, width, height);
     this.sceneChanged = false;
+    this.fitPending = false;
     if (this.framePending) {
       this.framePending = false;
       this.frameSelected();

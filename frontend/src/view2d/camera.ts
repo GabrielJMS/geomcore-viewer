@@ -75,3 +75,20 @@ export function panBy(c: Camera2D, dx: number, dy: number): Camera2D {
 export function resizeCamera(c: Camera2D, width: number, height: number): Camera2D {
   return { ...c, width, height };
 }
+
+/** What one frame knows when it decides whether to refit the camera. */
+export interface RefitState {
+  /** "Fit" (key F, the button, auto-fit turned on) since the last drawn frame. */
+  fitRequested: boolean;
+  autoFit: boolean;
+  /** The user panned or zoomed, or a selection was framed, since the last fit. */
+  userMoved: boolean;
+  sceneChanged: boolean;
+  /** The pane is not the size the camera was made for. */
+  resized: boolean;
+}
+
+/** A fit request always refits; otherwise auto-fit follows the scene and the pane until the user moves the camera. */
+export function shouldRefit(s: RefitState): boolean {
+  return s.fitRequested || (s.autoFit && !s.userMoved && (s.sceneChanged || s.resized));
+}

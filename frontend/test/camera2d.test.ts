@@ -7,6 +7,7 @@ import {
   panBy,
   resizeCamera,
   screenToWorld,
+  shouldRefit,
   visibleRect,
   worldToScreen,
   zoomAt,
@@ -80,5 +81,24 @@ describe("zoomAt and panBy", () => {
   it("drags the world with the pointer", () => {
     const moved = panBy(cam, 50, -100);
     expect(worldToScreen(moved, 1, 2)).toEqual([450, 200]);
+  });
+});
+
+describe("shouldRefit", () => {
+  const still = { fitRequested: false, autoFit: true, userMoved: false, sceneChanged: false, resized: false };
+
+  it("honours a fit request even with auto-fit off and a moved camera", () => {
+    expect(shouldRefit({ ...still, fitRequested: true, autoFit: false, userMoved: true })).toBe(true);
+  });
+
+  it("follows the scene and the pane size while auto-fit is on and the camera untouched", () => {
+    expect(shouldRefit({ ...still, sceneChanged: true })).toBe(true);
+    expect(shouldRefit({ ...still, resized: true })).toBe(true);
+    expect(shouldRefit(still)).toBe(false);
+  });
+
+  it("leaves the camera alone once the user moved it or auto-fit is off", () => {
+    expect(shouldRefit({ ...still, sceneChanged: true, userMoved: true })).toBe(false);
+    expect(shouldRefit({ ...still, sceneChanged: true, resized: true, autoFit: false })).toBe(false);
   });
 });

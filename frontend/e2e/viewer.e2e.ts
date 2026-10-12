@@ -93,6 +93,21 @@ test("a re-run swaps the scene but keeps the camera and hidden groups", async ({
   expect(await camera(page)).toEqual(moved);
 });
 
+test("F fits the plane view with auto-fit off", async ({ page, request }) => {
+  await request.post("/api/objects", { data: { run: "r1", title: "fit", objects: [point("A", 0, 0), point("B", 2, 1)] } });
+  await page.goto("/");
+  await expect(page.locator(".labels .label", { hasText: /^B / })).toBeVisible(); // drawn, so the camera is fitted
+  await nextFrame(page);
+  const fitted = await camera(page);
+  await page.locator("#autofit").uncheck();
+  const box = (await page.locator("#view2d").boundingBox())!;
+  await page.mouse.move(box.x + box.width / 3, box.y + box.height / 3);
+  await page.mouse.wheel(0, 300);
+  await expect.poll(async () => (await camera(page)).scale).toBeLessThan(fitted.scale);
+  await page.keyboard.press("f");
+  await expect.poll(() => camera(page)).toEqual(fitted);
+});
+
 test("T switches the theme, P presents and Esc leaves", async ({ page }) => {
   await page.goto("/?scene=sample-scene.json");
   await expect(page.locator("#count")).toHaveText("12 objects");
