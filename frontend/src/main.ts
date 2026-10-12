@@ -7,7 +7,9 @@ import { mountPanel } from "./ui/panel";
 import { type ActiveView, type AvailableViews, UiState, usableView } from "./ui/state";
 import { applyTheme } from "./ui/theme";
 import { View2D } from "./view2d/view";
-import { View3D } from "./view3d";
+import { View3D } from "./view3d/view";
+import { HoverLink } from "./viewuv/link";
+import { UvPane } from "./viewuv/pane";
 
 function byId<T extends HTMLElement = HTMLElement>(id: string): T {
   const el = document.getElementById(id);
@@ -39,9 +41,12 @@ function viewFailed(view: ActiveView, message: string): void {
   failures.push(message);
 }
 
+const link = new HoverLink();
 let view3d: View3D | null = null;
+let uvpane: UvPane | null = null;
 try {
-  view3d = new View3D(store, ui, byId<HTMLCanvasElement>("canvas3d"));
+  view3d = new View3D(store, ui, byId("view3d"), link);
+  uvpane = new UvPane(store, ui, link, byId("view3d"));
 } catch (err) {
   console.error("geomcore-viewer: 3D view failed", err);
   viewFailed("3d", `3D view unavailable: ${err instanceof Error ? err.message : String(err)}`);
@@ -69,6 +74,7 @@ const shell = new FrameScheduler(() => {
   autofit.checked = ui.autoFit;
   view2d.setActive(view === "2d");
   view3d?.setActive(view === "3d");
+  uvpane?.setActive(view === "3d");
 });
 store.onChange(() => shell.request());
 ui.onChange((ev) => {
@@ -101,6 +107,7 @@ mountKeys({
   theme: () => ui.toggleTheme(),
   view2d: () => chooseView("2d"),
   view3d: () => chooseView("3d"),
+  uvpane: () => ui.toggleUvPane(),
   escape: () => (ui.presenting ? ui.setPresenting(false) : ui.select(null)),
 });
 
@@ -123,6 +130,6 @@ window.addEventListener("drop", (e) => {
 });
 
 // Debug and e2e access (the e2e tests read cameras and strokes through it).
-Object.assign(window, { __gv: { store, ui, view2d, view3d } });
+Object.assign(window, { __gv: { store, ui, view2d, view3d, uvpane, link } });
 
 void store.load();

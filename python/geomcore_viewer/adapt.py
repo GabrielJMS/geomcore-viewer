@@ -181,8 +181,10 @@ def _curve_geom(obj, name: str) -> dict:
         return {"type": "line", "o": as_vec(obj.origin()), "d": as_vec(obj.direction())}
     if name in ("Circle3D", "Circle2D"):
         o = as_vec(obj.center())
-        z = as_vec(obj.normal()) if name == "Circle3D" else [0.0, 0.0, 1.0]
-        return {"type": "circle", "frame": _frame(o, _sub(P(0.0), o), z), "r": float(obj.radius())}
+        x = _sub(P(0.0), o)
+        # A (u, v) circle may run clockwise (parametrize_on a circle facing away): its frame's z is then −z.
+        z = as_vec(obj.normal()) if name == "Circle3D" else _cross(x, _sub(P(math.pi / 2), o))
+        return {"type": "circle", "frame": _frame(o, x, z), "r": float(obj.radius())}
     if name == "Ellipse3D":
         o = as_vec(obj.center())
         x, y = _sub(P(0.0), o), _sub(P(math.pi / 2), o)
@@ -257,6 +259,27 @@ def _single(obj, label: str | None, u, v) -> list[dict]:
     else:
         raise TypeError(name)
     return [{"label": label, "geom": geom, "source": name}]
+
+
+UV_CURVES = frozenset({"Line2D", "Circle2D"})
+
+
+def uv_curve(curve) -> dict:
+    """A pcurve's curve as protocol geometry in z = 0 (x is u, y is v): a geomcore ``Line2D`` or
+    ``Circle2D`` (what ``curve.parametrize_on(surface)`` returns), or a sequence of ``(u, v)``
+    pairs, which becomes a polyline."""
+    name = type(curve).__name__
+    if name in UV_CURVES:
+        [part] = _single(curve, None, None, None)
+        return part["geom"]
+    if name in GEOMETRY:
+        raise TypeError(f"a pcurve takes a Line2D, a Circle2D or (u, v) pairs, not a {name}")
+    points = [as_vec(p) for p in curve]
+    if any(p[2] != 0.0 for p in points):
+        raise TypeError("a pcurve's points are (u, v) pairs")
+    if len(points) < 2:
+        raise TypeError("a pcurve polyline needs at least 2 (u, v) points")
+    return {"type": "polyline", "points": points}
 
 
 # --- results and containers --------------------------------------------------

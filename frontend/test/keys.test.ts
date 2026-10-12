@@ -16,8 +16,19 @@ describe("keyAction", () => {
     expect(press("Escape")).toBe("escape");
   });
 
-  it("leaves other keys alone, including U until the (u,v) pane exists", () => {
-    expect(press("u")).toBeNull();
+  it("toggles the (u,v) pane with U", () => {
+    expect(press("u")).toBe("uvpane");
+    expect(press("U")).toBe("uvpane");
+  });
+
+  it("finds 2 and 3 by position on layouts where they need Shift (AZERTY)", () => {
+    expect(press("é", { code: "Digit2" })).toBe("view2d");
+    expect(press('"', { code: "Digit3" })).toBe("view3d");
+    expect(press("t", { code: "Digit2" })).toBe("theme"); // a layout's own letter keeps its meaning
+    expect(press("à", { code: "Digit0" })).toBeNull();
+  });
+
+  it("leaves other keys alone", () => {
     expect(press("a")).toBeNull();
     expect(press(" ")).toBeNull();
   });

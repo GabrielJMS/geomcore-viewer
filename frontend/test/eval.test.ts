@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
 import curves from "./fixtures/curves_analytic.json";
 import surfaces from "./fixtures/surfaces_analytic.json";
-import { curveRange, evalCurve } from "../src/geom/curves";
+import { evalCurve } from "../src/geom/curves";
 import { evalSurface, surfaceWindow } from "../src/geom/surfaces";
 import type { CurveGeom, SurfaceGeom } from "../src/geom/types";
-import { Box, Frame, Vec3, norm, sub } from "../src/geom/vec";
+import { Frame, Vec3, norm, sub } from "../src/geom/vec";
 
 type FxFrame = { origin: Vec3; x_dir: Vec3; y_dir: Vec3; z_dir: Vec3 };
 type CurveSample = { u: number; point: Vec3 };
@@ -48,30 +48,7 @@ describe("evalSurface matches geomcore goldens", () => {
 });
 
 const world: Frame = { o: [0, 0, 0], x: [1, 0, 0], y: [0, 1, 0], z: [0, 0, 1] };
-const unitBox: Box = { min: [-1, -1, -1], max: [1, 1, 1] };
-const inBox = (p: Vec3, b: Box) => p.every((c, i) => c >= b.min[i] && c <= b.max[i]);
 
-describe("curveRange", () => {
-  it("covers a box far from a line's origin", () => {
-    const [t0, t1] = curveRange({ type: "line", o: [100, 0, 0], d: [1, 0, 0] }, unitBox);
-    expect(t0).toBeLessThanOrEqual(-101);
-    expect(t1).toBeGreaterThanOrEqual(-99);
-  });
-
-  it.each<CurveGeom>([
-    { type: "parabola", frame: world, f: 0.25 },
-    { type: "hyperbola", frame: { ...world, o: [-1.5, 0, 0] }, a: 1, b: 0.5 },
-  ])("leaves the box just outside its range (%#)", (g) => {
-    const [t0, t1] = curveRange(g, unitBox);
-    expect(inBox(evalCurve(g, t1 * 1.01 + 1e-6), unitBox)).toBe(false);
-    expect(inBox(evalCurve(g, t0 * 1.01 - 1e-6), unitBox)).toBe(false);
-  });
-
-  it("uses full periods and explicit ranges", () => {
-    expect(curveRange({ type: "circle", frame: world, r: 1 }, unitBox)).toEqual([0, 2 * Math.PI]);
-    expect(curveRange({ type: "line", o: [0, 0, 0], d: [1, 0, 0], range: [2, 3] }, unitBox)).toEqual([2, 3]);
-  });
-});
 
 describe("surfaceWindow", () => {
   it("fills full periods and flags assumed infinite directions", () => {

@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { Rect, clipCurve2D, expandRect, quadraticRoots } from "../src/geom/clip";
+import { Rect, clipCurve2D, clipCurveBox, expandRect, quadraticRoots } from "../src/geom/clip";
 import { evalCurve } from "../src/geom/curves";
 import type { CurveGeom, Range } from "../src/geom/types";
-import type { Frame, Vec3 } from "../src/geom/vec";
+import type { Box, Frame, Vec3 } from "../src/geom/vec";
 
 const TAU = 2 * Math.PI;
 const R = (xmin: number, xmax: number, ymin: number, ymax: number): Rect => ({ xmin, xmax, ymin, ymax });
@@ -139,5 +139,30 @@ describe("clipCurve2D", () => {
         }
       }
     }
+  });
+});
+
+describe("clipCurveBox", () => {
+  const box: Box = { min: [-1, -2, -3], max: [1, 2, 3] };
+  const tilted: Frame = { o: [0, 0, 0], x: [1, 0, 0], y: [0, 0.6, 0.8], z: [0, -0.8, 0.6] };
+
+  it("clips an infinite line to the box faces it crosses", () => {
+    expectRanges(clipCurveBox({ type: "line", o: [0, 0, 0], d: [0, 0, 1] }, box), [[-3, 3]]);
+    expectRanges(clipCurveBox({ type: "line", o: [0, 0, 0], d: [1, 1, 1] }, box), [[-1, 1]]);
+  });
+
+  it("returns nothing for a line that passes above the box", () => {
+    expect(clipCurveBox({ type: "line", o: [0, 0, 4], d: [1, 0, 0] }, box)).toEqual([]);
+  });
+
+  it("cuts a tilted circle where it leaves through the x faces", () => {
+    // P(t) = (2 cos t, 1.2 sin t, 1.6 sin t): inside |x| ≤ 1 only, so around t = ±π/2.
+    const ranges = clipCurveBox({ type: "circle", frame: tilted, r: 2 }, box);
+    expectRanges(ranges, [[Math.PI / 3, (2 * Math.PI) / 3], [(4 * Math.PI) / 3, (5 * Math.PI) / 3]]);
+  });
+
+  it("clips a parabola standing in a vertical plane by its height", () => {
+    const g: CurveGeom = { type: "parabola", frame: { o: [0, 0, -3], x: [0, 0, 1], y: [1, 0, 0], z: [0, 1, 0] }, f: 0.25 };
+    expectRanges(clipCurveBox(g, { min: [-10, -1, -3], max: [10, 1, 1] }), [[-2, 2]]); // z = t² − 3 ≤ 1
   });
 });

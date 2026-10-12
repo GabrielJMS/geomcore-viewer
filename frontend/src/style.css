@@ -54,9 +54,18 @@ header .meta:empty { display: none; }
 
 main { flex: 1; min-height: 0; display: grid; grid-template-columns: 1fr 260px; }
 #stage { position: relative; min-width: 0; overflow: hidden; background: var(--bg); }
-#canvas3d, #view2d { position: absolute; inset: 0; width: 100%; height: 100%; }
-#canvas3d { outline: none; }
-#stage[data-view="2d"] #canvas3d, #stage[data-view="3d"] #view2d { display: none; }
+#view3d, #view2d { position: absolute; inset: 0; width: 100%; height: 100%; }
+#canvas3d { display: block; width: 100%; height: 100%; outline: none; }
+#stage[data-view="2d"] #view3d, #stage[data-view="3d"] #view2d { display: none; }
+.toolbar3d { position: absolute; top: 0.5rem; right: 0.5rem; display: flex; gap: 0.25rem; }
+.toolbar3d button { padding: 0.15rem 0.45rem; font-size: 0.75rem; opacity: 0.85; }
+body.presenting .toolbar3d { display: none; }
+.uvpane { position: absolute; right: 0.5rem; bottom: 0.5rem; z-index: 1; padding: 0.3rem 0.4rem; border: 1px solid var(--border); border-radius: 6px; background: var(--surface); font-size: 12px; }
+.uvpane[hidden] { display: none; }
+.uvpane canvas { display: block; }
+.uvpane .uv-title { font-weight: 600; margin-bottom: 0.2rem; }
+.uvpane .uv-readout { font-variant-numeric: tabular-nums; color: var(--muted); min-height: 1.4em; white-space: nowrap; }
+body.presenting .uvpane { font-size: 18px; }
 #view2d canvas { display: block; }
 
 aside#panel { background: var(--surface); border-left: 1px solid var(--border); padding: 0.5rem 0.75rem; overflow: auto; }
@@ -68,6 +77,7 @@ aside li.object.hidden .name, aside li.object.hidden .swatch { opacity: 0.4; }
 aside .swatch { flex: none; width: 0.8em; height: 0.8em; border-radius: 2px; }
 aside .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 aside .detail { margin-left: auto; color: var(--muted); font-size: 0.75rem; white-space: nowrap; font-variant-numeric: tabular-nums; }
+aside .detail.warn { color: var(--warn); }
 aside li.group { margin-top: 0.4rem; }
 aside .group-head { display: flex; gap: 0.35rem; align-items: center; font-weight: 600; padding: 0.15rem 0; }
 aside .group > ul { padding-left: 1.1rem; }

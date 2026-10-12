@@ -40,6 +40,20 @@ export function naturalWindow(g: SurfaceGeom): { u: Range | null; v: Range | nul
   }
 }
 
+/** The period of each parameter direction that wraps around (2π), null for one that does not. */
+export function periods(g: SurfaceGeom): { u: number | null; v: number | null } {
+  switch (g.type) {
+    case "plane":
+      return { u: null, v: null };
+    case "cylinder":
+    case "cone":
+    case "sphere":
+      return { u: TAU, v: null };
+    case "torus":
+      return { u: TAU, v: TAU };
+  }
+}
+
 /** Window to tessellate: explicit, else natural, else ±fallbackHalf (`assumed` = a fallback was used). */
 export function surfaceWindow(g: SurfaceGeom, fallbackHalf: number): { u: Range; v: Range; assumed: boolean } {
   const natural = naturalWindow(g);
