@@ -53,8 +53,14 @@ jobs:
       - run: unzip -Z1 python/dist/*.whl | grep -x 'geomcore_viewer/_frontend/index.html'
   rust:
     runs-on: ubuntu-latest
+    defaults: { run: { working-directory: clients/rust } }
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
+        with: { components: "clippy, rustfmt" }
+      - run: cargo fmt --check
       - run: cargo test
-        working-directory: clients/rust
+      - run: cargo test --features geomcore
+      - run: cargo clippy --all-targets --features geomcore -- -D warnings
+      - run: scripts/rust-live-check.sh 8797   # the examples against a real server
+        working-directory: .

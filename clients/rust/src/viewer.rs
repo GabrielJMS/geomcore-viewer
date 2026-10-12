@@ -786,4 +786,46 @@ mod tests {
     fn a_malformed_url_is_an_error() {
         assert!(matches!(Viewer::builder("t").url("http://127.0.0.1:x").build(), Err(Error::Url(_))));
     }
+
+    /// `tests/scene.json` holds one object of every kind, as this client sends them;
+    /// the viewer's own tests (`frontend/test/rust-scene.test.ts`) check it parses
+    /// without problems. Regenerate it with `GV_UPDATE_FIXTURE=1 cargo test`.
+    #[test]
+    fn the_scene_fixture_is_current() {
+        let (port, _) = stub::viewer();
+        let mut v = Viewer::builder("Every kind")
+            .view(ViewMode::Space)
+            .url(&format!("http://127.0.0.1:{port}"))
+            .build()
+            .unwrap();
+        let tilted = Frame::new([1.0, 0.0, 0.0], [0.0, 0.6, 0.8], [1.0, 0.0, 0.0]).unwrap();
+        let o = || Opts::new();
+        v.add(Geom::line([0.0; 3], [1.0, 1.0, 0.0]).range(-1.0, 1.0), o().label("line").dashed(true)).unwrap();
+        v.add(Geom::circle(tilted, 1.0), o().label("circle").width(3.0)).unwrap();
+        v.add(Geom::ellipse(Frame::WORLD, 3.0, 2.0), o().label("ellipse").extra("foci", true)).unwrap();
+        v.add(Geom::parabola(Frame::WORLD, 0.5), o().label("parabola").extra("directrix", true)).unwrap();
+        v.add(Geom::hyperbola(Frame::WORLD, 1.0, 0.5), o().label("hyperbola").extra("asymptotes", true)).unwrap();
+        v.add(Geom::polyline(vec![[0.0; 3], [1.0, 2.0, 0.0], [2.0, 0.0, 1.0]]), o().label("polyline")).unwrap();
+        v.add(Geom::plane(tilted), o().label("plane").opacity(0.4)).unwrap();
+        let cyl = v.add(Geom::cylinder(Frame::WORLD, 2.0), o().label("cylinder").extra("isolines", [8, 4])).unwrap();
+        v.add(Geom::cone(Frame::WORLD, 0.4, 0.0).window(None, Some([0.0, 2.0])), o().label("cone")).unwrap();
+        v.add(Geom::sphere(Frame::at([0.0, 0.0, 3.0]), 1.0), o().label("sphere").extra("wire", true)).unwrap();
+        v.add(Geom::torus(Frame::WORLD, 3.0, 0.5), o().label("torus").group("surfaces")).unwrap();
+        v.add(Geom::mesh(vec![[0.0; 3], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]], vec![0, 1, 2]), o().label("mesh")).unwrap();
+        v.add(Geom::point([1.0, 2.0, 3.0]), o().label("point")).unwrap();
+        v.add(Geom::Points { positions: vec![[0.0; 3], [1.0; 3]], size: Some(4.0) }, o().label("points")).unwrap();
+        v.add(Geom::arrow([0.0; 3], [0.0, 0.0, 1.0]), o().label("arrow")).unwrap();
+        v.add(Geom::text([0.0, 0.0, 1.0], "z"), o().label("text")).unwrap();
+        v.add_all(Vec::<Geom>::new(), o().label("note")).unwrap();
+        v.pcurve(Geom::line([0.0, 1.0, 0.0], [1.0, 0.0, 0.0]), &cyl, o().label("pcurve line")).unwrap();
+        v.pcurve(Geom::circle(Frame::at([1.0, 0.0, 0.0]), 0.5), &cyl, o().label("pcurve circle")).unwrap();
+        let mut doc = v.scene();
+        doc["run"] = json!("fixture");
+        let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/scene.json");
+        let text = serde_json::to_string_pretty(&doc).unwrap() + "\n";
+        if std::env::var_os("GV_UPDATE_FIXTURE").is_some() {
+            std::fs::write(&path, &text).unwrap();
+        }
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), text, "run GV_UPDATE_FIXTURE=1 cargo test");
+    }
 }

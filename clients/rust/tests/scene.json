@@ -1,0 +1,606 @@
+{
+  "objects": [
+    {
+      "geom": {
+        "d": [
+          1.0,
+          1.0,
+          0.0
+        ],
+        "o": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "range": [
+          -1.0,
+          1.0
+        ],
+        "type": "line"
+      },
+      "id": "line",
+      "label": "line",
+      "style": {
+        "color": "#d1495b",
+        "dashed": true
+      }
+    },
+    {
+      "geom": {
+        "frame": {
+          "o": [
+            1.0,
+            0.0,
+            0.0
+          ],
+          "x": [
+            1.0,
+            0.0,
+            0.0
+          ],
+          "y": [
+            0.0,
+            0.8,
+            -0.6
+          ],
+          "z": [
+            0.0,
+            0.6,
+            0.8
+          ]
+        },
+        "r": 1.0,
+        "type": "circle"
+      },
+      "id": "circle",
+      "label": "circle",
+      "style": {
+        "color": "#00798c",
+        "width": 3.0
+      }
+    },
+    {
+      "extras": {
+        "foci": true
+      },
+      "geom": {
+        "a": 3.0,
+        "b": 2.0,
+        "frame": {
+          "o": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "x": [
+            1.0,
+            0.0,
+            0.0
+          ],
+          "y": [
+            0.0,
+            1.0,
+            0.0
+          ],
+          "z": [
+            0.0,
+            0.0,
+            1.0
+          ]
+        },
+        "type": "ellipse"
+      },
+      "id": "ellipse",
+      "label": "ellipse",
+      "style": {
+        "color": "#c47f00"
+      }
+    },
+    {
+      "extras": {
+        "directrix": true
+      },
+      "geom": {
+        "f": 0.5,
+        "frame": {
+          "o": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "x": [
+            1.0,
+            0.0,
+            0.0
+          ],
+          "y": [
+            0.0,
+            1.0,
+            0.0
+          ],
+          "z": [
+            0.0,
+            0.0,
+            1.0
+          ]
+        },
+        "type": "parabola"
+      },
+      "id": "parabola",
+      "label": "parabola",
+      "style": {
+        "color": "#3a7cc2"
+      }
+    },
+    {
+      "extras": {
+        "asymptotes": true
+      },
+      "geom": {
+        "a": 1.0,
+        "b": 0.5,
+        "frame": {
+          "o": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "x": [
+            1.0,
+            0.0,
+            0.0
+          ],
+          "y": [
+            0.0,
+            1.0,
+            0.0
+          ],
+          "z": [
+            0.0,
+            0.0,
+            1.0
+          ]
+        },
+        "type": "hyperbola"
+      },
+      "id": "hyperbola",
+      "label": "hyperbola",
+      "style": {
+        "color": "#8a5cc2"
+      }
+    },
+    {
+      "geom": {
+        "points": [
+          [
+            0.0,
+            0.0,
+            0.0
+          ],
+          [
+            1.0,
+            2.0,
+            0.0
+          ],
+          [
+            2.0,
+            0.0,
+            1.0
+          ]
+        ],
+        "type": "polyline"
+      },
+      "id": "polyline",
+      "label": "polyline",
+      "style": {
+        "color": "#5c8a00"
+      }
+    },
+    {
+      "geom": {
+        "frame": {
+          "o": [
+            1.0,
+            0.0,
+            0.0
+          ],
+          "x": [
+            1.0,
+            0.0,
+            0.0
+          ],
+          "y": [
+            0.0,
+            0.8,
+            -0.6
+          ],
+          "z": [
+            0.0,
+            0.6,
+            0.8
+          ]
+        },
+        "type": "plane",
+        "window": {
+          "u": [
+            -4.5,
+            4.5
+          ],
+          "v": [
+            -4.5,
+            4.5
+          ]
+        }
+      },
+      "id": "plane",
+      "label": "plane",
+      "style": {
+        "color": "#b5448f",
+        "opacity": 0.4
+      }
+    },
+    {
+      "extras": {
+        "isolines": [
+          8,
+          4
+        ]
+      },
+      "geom": {
+        "frame": {
+          "o": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "x": [
+            1.0,
+            0.0,
+            0.0
+          ],
+          "y": [
+            0.0,
+            1.0,
+            0.0
+          ],
+          "z": [
+            0.0,
+            0.0,
+            1.0
+          ]
+        },
+        "r": 2.0,
+        "type": "cylinder",
+        "window": {
+          "u": [
+            0.0,
+            6.283185307179586
+          ],
+          "v": [
+            -4.5,
+            4.5
+          ]
+        }
+      },
+      "id": "cylinder",
+      "label": "cylinder",
+      "style": {
+        "color": "#6b7a8f"
+      }
+    },
+    {
+      "geom": {
+        "frame": {
+          "o": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "x": [
+            1.0,
+            0.0,
+            0.0
+          ],
+          "y": [
+            0.0,
+            1.0,
+            0.0
+          ],
+          "z": [
+            0.0,
+            0.0,
+            1.0
+          ]
+        },
+        "ref_radius": 0.0,
+        "semi_angle": 0.4,
+        "type": "cone",
+        "window": {
+          "u": [
+            0.0,
+            6.283185307179586
+          ],
+          "v": [
+            0.0,
+            2.0
+          ]
+        }
+      },
+      "id": "cone",
+      "label": "cone",
+      "style": {
+        "color": "#d1495b"
+      }
+    },
+    {
+      "extras": {
+        "wire": true
+      },
+      "geom": {
+        "frame": {
+          "o": [
+            0.0,
+            0.0,
+            3.0
+          ],
+          "x": [
+            1.0,
+            0.0,
+            0.0
+          ],
+          "y": [
+            0.0,
+            1.0,
+            0.0
+          ],
+          "z": [
+            0.0,
+            0.0,
+            1.0
+          ]
+        },
+        "r": 1.0,
+        "type": "sphere",
+        "window": {
+          "u": [
+            0.0,
+            6.283185307179586
+          ],
+          "v": [
+            -1.5707963267948966,
+            1.5707963267948966
+          ]
+        }
+      },
+      "id": "sphere",
+      "label": "sphere",
+      "style": {
+        "color": "#00798c"
+      }
+    },
+    {
+      "geom": {
+        "R": 3.0,
+        "frame": {
+          "o": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "x": [
+            1.0,
+            0.0,
+            0.0
+          ],
+          "y": [
+            0.0,
+            1.0,
+            0.0
+          ],
+          "z": [
+            0.0,
+            0.0,
+            1.0
+          ]
+        },
+        "r": 0.5,
+        "type": "torus",
+        "window": {
+          "u": [
+            0.0,
+            6.283185307179586
+          ],
+          "v": [
+            0.0,
+            6.283185307179586
+          ]
+        }
+      },
+      "group": "surfaces",
+      "id": "torus",
+      "label": "torus",
+      "style": {
+        "color": "#c47f00"
+      }
+    },
+    {
+      "geom": {
+        "indices": [
+          0,
+          1,
+          2
+        ],
+        "type": "mesh",
+        "vertices": [
+          [
+            0.0,
+            0.0,
+            0.0
+          ],
+          [
+            1.0,
+            0.0,
+            0.0
+          ],
+          [
+            0.0,
+            1.0,
+            0.0
+          ]
+        ]
+      },
+      "id": "mesh",
+      "label": "mesh",
+      "style": {
+        "color": "#3a7cc2"
+      }
+    },
+    {
+      "geom": {
+        "p": [
+          1.0,
+          2.0,
+          3.0
+        ],
+        "type": "point"
+      },
+      "id": "point",
+      "label": "point",
+      "style": {
+        "color": "#8a5cc2"
+      }
+    },
+    {
+      "geom": {
+        "positions": [
+          [
+            0.0,
+            0.0,
+            0.0
+          ],
+          [
+            1.0,
+            1.0,
+            1.0
+          ]
+        ],
+        "size": 4.0,
+        "type": "points"
+      },
+      "id": "points",
+      "label": "points",
+      "style": {
+        "color": "#5c8a00"
+      }
+    },
+    {
+      "geom": {
+        "at": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "type": "arrow",
+        "vec": [
+          0.0,
+          0.0,
+          1.0
+        ]
+      },
+      "id": "arrow",
+      "label": "arrow",
+      "style": {
+        "color": "#b5448f"
+      }
+    },
+    {
+      "geom": {
+        "at": [
+          0.0,
+          0.0,
+          1.0
+        ],
+        "text": "z",
+        "type": "text"
+      },
+      "id": "text",
+      "label": "text",
+      "style": {
+        "color": "#6b7a8f"
+      }
+    },
+    {
+      "geom": {
+        "level": "info",
+        "text": "note: ∅",
+        "type": "note"
+      },
+      "id": "note·note"
+    },
+    {
+      "geom": {
+        "curve": {
+          "d": [
+            1.0,
+            0.0,
+            0.0
+          ],
+          "o": [
+            0.0,
+            1.0,
+            0.0
+          ],
+          "type": "line"
+        },
+        "surface": "cylinder",
+        "type": "pcurve"
+      },
+      "id": "pcurve line",
+      "label": "pcurve line",
+      "style": {
+        "color": "#d1495b"
+      }
+    },
+    {
+      "geom": {
+        "curve": {
+          "frame": {
+            "o": [
+              1.0,
+              0.0,
+              0.0
+            ],
+            "x": [
+              1.0,
+              0.0,
+              0.0
+            ],
+            "y": [
+              0.0,
+              1.0,
+              0.0
+            ],
+            "z": [
+              0.0,
+              0.0,
+              1.0
+            ]
+          },
+          "r": 0.5,
+          "type": "circle"
+        },
+        "surface": "cylinder",
+        "type": "pcurve"
+      },
+      "id": "pcurve circle",
+      "label": "pcurve circle",
+      "style": {
+        "color": "#00798c"
+      }
+    }
+  ],
+  "run": "fixture",
+  "title": "Every kind",
+  "version": 2,
+  "view": "3d"
+}

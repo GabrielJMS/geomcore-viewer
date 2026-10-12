@@ -14,3 +14,11 @@ geomcore = ["dep:geomcore"]
 [dependencies]
 serde_json = "1"
 geomcore = { version = "0.28", optional = true }
+
+[[example]]
+name = "conics"
+required-features = ["geomcore"]
+
+[[example]]
+name = "pcurve"
+required-features = ["geomcore"]
