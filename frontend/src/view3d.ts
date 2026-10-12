@@ -2,7 +2,7 @@ import * as BABYLON from "@babylonjs/core";
 import { cameraScale } from "./camera";
 import { Changes, FrameScheduler } from "./frame";
 import { halfSize, sameBox, sceneBounds, viewBox } from "./geom/bounds";
-import { arrowPolylines, curvePieces, tessellateSurface } from "./geom/tessellate";
+import { WORLD_TOL, arrowPolylines, curvePieces, surfaceGrid, tessellateSurface } from "./geom/tessellate";
 import { isCurve, isSurface } from "./geom/types";
 import type { Box, Vec3 } from "./geom/vec";
 import type { SceneObject } from "./protocol";
@@ -196,7 +196,8 @@ export class View3D {
     if (g.type === "polyline") return this.lines(o.id, [g.points], color);
     if (g.type === "arrow") return this.lines(o.id, arrowPolylines(g.at, g.vec), color);
     if (isSurface(g)) {
-      const mesh = tessellateSurface(g, halfSize(this.box));
+      const half = halfSize(this.box);
+      const mesh = tessellateSurface(g, surfaceGrid(g, half, WORLD_TOL * half));
       return [this.surface(o, mesh.positions, mesh.indices, color)];
     }
     if (g.type === "mesh") return [this.surface(o, g.vertices.flat(), g.indices, color)];
