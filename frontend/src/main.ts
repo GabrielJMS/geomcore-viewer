@@ -7,7 +7,7 @@ import { mountPanel } from "./ui/panel";
 import { type ActiveView, type AvailableViews, UiState, usableView } from "./ui/state";
 import { applyTheme } from "./ui/theme";
 import { View2D } from "./view2d/view";
-import { View3D } from "./view3d";
+import { View3D } from "./view3d/view";
 
 function byId<T extends HTMLElement = HTMLElement>(id: string): T {
   const el = document.getElementById(id);
@@ -41,7 +41,7 @@ function viewFailed(view: ActiveView, message: string): void {
 
 let view3d: View3D | null = null;
 try {
-  view3d = new View3D(store, ui, byId<HTMLCanvasElement>("canvas3d"));
+  view3d = new View3D(store, ui, byId("view3d"));
 } catch (err) {
   console.error("geomcore-viewer: 3D view failed", err);
   viewFailed("3d", `3D view unavailable: ${err instanceof Error ? err.message : String(err)}`);

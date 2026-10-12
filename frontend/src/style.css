@@ -54,9 +54,12 @@ header .meta:empty { display: none; }
 
 main { flex: 1; min-height: 0; display: grid; grid-template-columns: 1fr 260px; }
 #stage { position: relative; min-width: 0; overflow: hidden; background: var(--bg); }
-#canvas3d, #view2d { position: absolute; inset: 0; width: 100%; height: 100%; }
-#canvas3d { outline: none; }
-#stage[data-view="2d"] #canvas3d, #stage[data-view="3d"] #view2d { display: none; }
+#view3d, #view2d { position: absolute; inset: 0; width: 100%; height: 100%; }
+#canvas3d { display: block; width: 100%; height: 100%; outline: none; }
+#stage[data-view="2d"] #view3d, #stage[data-view="3d"] #view2d { display: none; }
+.toolbar3d { position: absolute; top: 0.5rem; right: 0.5rem; display: flex; gap: 0.25rem; }
+.toolbar3d button { padding: 0.15rem 0.45rem; font-size: 0.75rem; opacity: 0.85; }
+body.presenting .toolbar3d { display: none; }
 #view2d canvas { display: block; }
 
 aside#panel { background: var(--surface); border-left: 1px solid var(--border); padding: 0.5rem 0.75rem; overflow: auto; }
