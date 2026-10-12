@@ -1,9 +1,11 @@
 import json
 import math
+import re
 import socket
 import sys
 import urllib.request
 import warnings
+from pathlib import Path
 
 import pytest
 
@@ -362,6 +364,12 @@ def test_palette_reads_on_both_themes(background):
     assert len(set(PALETTE)) == 8
     for color in PALETTE:
         assert _contrast(color, background) >= 3.0, color
+
+
+def test_the_rust_client_uses_the_same_palette():
+    rust = (Path(__file__).resolve().parents[2] / "clients/rust/src/object.rs").read_text()
+    line = next(row for row in rust.splitlines() if row.startswith("pub const PALETTE"))
+    assert re.findall(r'"(#[0-9a-f]{6})"', line) == list(PALETTE)
 
 
 def test_many_arguments_with_several_points_keep_distinct_labels(server):

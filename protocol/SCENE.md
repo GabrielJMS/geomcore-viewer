@@ -115,7 +115,6 @@ the "fit" button or toggling auto-fit hands the camera back).
 | `DELETE` | `/api/objects/{id}` | — | remove (404 if absent) |
 | `POST` | `/api/clear` | — | empty scene |
 | `POST` | `/api/shutdown` | — | stop the server |
-| `POST` | `/api/add` | one v1 entity | v1 clients (kept until the Rust client speaks v2) |
 | `GET` | `/events` | — | SSE: `scene`, then `run`, `upsert`, `remove`, `clear` |
 
 ### Events
@@ -159,6 +158,8 @@ viewer, which lists rejected objects in its panel.
 - v1 documents (`"version": 1`, `entities`) still load: `curve3d`/`curve2d`
   → `polyline`, `surface` → `mesh` (with `opacity`), `points3d`/`points2d`
   → `points`, `name` → `label`, `color` → `style.color`.
+- The server takes v2 objects only: the v1 endpoint `POST /api/add` is gone
+  (both clients speak v2), and `/api/objects` rejects v1 entities with `400`.
 - Unknown `geom.type` → the object is skipped and listed as a problem.
 - Any other `version` → nothing is drawn and the page says why.
 
