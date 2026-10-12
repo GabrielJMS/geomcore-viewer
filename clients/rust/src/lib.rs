@@ -2,6 +2,8 @@
 //! (scene protocol v2, `protocol/SCENE.md`).
 
 mod geom;
+#[allow(dead_code)] // until the viewer uses it
+mod http;
 mod object;
 
 pub use geom::{Frame, Geom, NoteLevel, Vec3, Window};
