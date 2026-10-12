@@ -10,16 +10,21 @@ from .spawn import stop_server
 
 
 def main(argv: list[str] | None = None) -> None:
-    port_help = "default: the port of $GEOMCORE_VIEWER_URL, else 8765"
+    port_help = "default: the port of $GEOMCORE_VIEWER_URL (80 when it names none), else 8765"
     parser = argparse.ArgumentParser(prog="geomcore-viewer")
     commands = parser.add_subparsers(dest="command", required=True)
     serve = commands.add_parser("serve", help="serve the viewer in the foreground")
     serve.add_argument("--dir", default=None, help="frontend directory (default: the bundled build)")
-    serve.add_argument("--port", type=int, default=default_port(), help=port_help)
+    serve.add_argument("--port", type=int, default=None, help=port_help)
     serve.add_argument("--no-browser", action="store_true")
     stop = commands.add_parser("stop", help="stop a running viewer server")
-    stop.add_argument("--port", type=int, default=default_port(), help=port_help)
+    stop.add_argument("--port", type=int, default=None, help=port_help)
     args = parser.parse_args(argv)
+    if args.port is None:  # resolved only now, so an explicit --port works whatever the variable holds
+        try:
+            args.port = default_port()
+        except ValueError as err:
+            parser.error(str(err))
 
     if args.command == "serve":
         server = Server(args.dir, args.port)

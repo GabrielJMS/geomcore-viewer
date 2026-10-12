@@ -342,3 +342,39 @@ def test_a_later_outage_warns_again(tmp_path):
         second.stop()
     with pytest.warns(RuntimeWarning, match="unreachable"):
         view.add(Point3D(3, 0), label="d")
+
+
+def _contrast(a, b):
+    def lum(hex_color):
+        def channel(c):
+            s = int(c, 16) / 255
+            return s / 12.92 if s <= 0.03928 else ((s + 0.055) / 1.055) ** 2.4
+
+        r, g, b_ = (channel(hex_color[i:i + 2]) for i in (1, 3, 5))
+        return 0.2126 * r + 0.7152 * g + 0.0722 * b_
+
+    hi, lo = sorted((lum(a), lum(b)), reverse=True)
+    return (hi + 0.05) / (lo + 0.05)
+
+
+@pytest.mark.parametrize("background", ["#f7f8fa", "#16181d"])
+def test_palette_reads_on_both_themes(background):
+    assert len(set(PALETTE)) == 8
+    for color in PALETTE:
+        assert _contrast(color, background) >= 3.0, color
+
+
+def test_many_arguments_with_several_points_keep_distinct_labels(server):
+    two = ("points", [(0.1, Point3D(0, 0), 0.2), (0.3, Point3D(1, 1), 0.4)])
+    one = ("point", (0.5, Point3D(2, 2), 0.6))
+    handles = make(server).add(two, *[one] * 10, label="P")
+    ids = [h.id for h in handles]
+    assert ids[:3] == ["P₁,₁", "P₁,₂", "P₂"]
+    assert ids[-1] == "P₁₁"
+    assert len(set(ids)) == 12
+
+
+def test_meta_reaches_the_server(server):
+    make(server).add(("points", [(0.1, Point3D(1, 0), 0.2)]), label="P")
+    [obj] = _scene(server)["objects"]
+    assert obj["meta"] == {"tag": "points", "params": [0.1, 0.2]}

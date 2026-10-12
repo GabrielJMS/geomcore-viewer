@@ -24,15 +24,37 @@ def _timed_out(err: OSError) -> bool:
     return isinstance(reason, (TimeoutError, socket.timeout))
 
 
+def _refused(err: urllib.error.HTTPError) -> bool:
+    """A 403 from a geomcore-viewer whose Host check rejected the URL (a tunnel to another port)."""
+    if err.code != 403:
+        return False
+    try:
+        doc = json.loads(err.read())
+    except (ValueError, OSError):
+        return False
+    return isinstance(doc, dict) and doc.get("app") == APP
+
+
+def refused_hint(url: str) -> str:
+    """What to tell the user when a geomcore-viewer refuses ``url``."""
+    port = urlparse(url).port or 80
+    return (
+        f"the geomcore-viewer at {url} refused the request: it only answers to its own address, "
+        f"so an SSH tunnel must keep the port (ssh -L {port}:127.0.0.1:{port} <host>)"
+    )
+
+
 def probe(url: str, timeout: float = 0.5) -> str:
-    """``"ours"`` (a v2 geomcore-viewer answers), ``"foreign"`` (something else
-    answers), ``"unresponsive"`` (something accepts the connection but does not
-    answer within ``timeout``) or ``"none"`` (nothing listens)."""
+    """``"ours"`` (a v2 geomcore-viewer answers), ``"refused"`` (a geomcore-viewer
+    answers but rejects this URL's host, e.g. through a tunnel that changes the
+    port), ``"foreign"`` (something else answers), ``"unresponsive"`` (something
+    accepts the connection but does not answer within ``timeout``) or ``"none"``
+    (nothing listens)."""
     try:
         with urllib.request.urlopen(f"{url}/api/health", timeout=timeout) as res:
             doc = json.loads(res.read())
-    except urllib.error.HTTPError:
-        return "foreign"
+    except urllib.error.HTTPError as err:
+        return "refused" if _refused(err) else "foreign"
     except (ValueError, http.client.HTTPException):
         return "foreign"
     except OSError as err:
@@ -63,15 +85,19 @@ def _spawn(port: int) -> subprocess.Popen:
     return proc
 
 
-def ensure_server(url: str, timeout: float = 5.0) -> bool:
+def ensure_server(url: str, timeout: float = 3.0) -> bool:
     """Make sure a geomcore-viewer answers at ``url``; return True if this call started it.
 
-    Raises RuntimeError when another application holds the port, when ``url``
-    is not local, or when the started server does not answer within ``timeout``.
+    Raises RuntimeError when another application holds the port, when a
+    geomcore-viewer refuses ``url`` (a tunnel that changes the port), when
+    ``url`` is not local, or when the started server does not answer within
+    ``timeout`` (spec: ≤ 3 s).
     """
     state = probe(url)
     if state == "ours":
         return False
+    if state == "refused":
+        raise RuntimeError(refused_hint(url))
     if state == "foreign":
         raise RuntimeError(
             f"{url} answers but is not a geomcore-viewer v2 server (an older geomcore-viewer, "

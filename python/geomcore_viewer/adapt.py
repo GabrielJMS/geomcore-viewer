@@ -57,8 +57,17 @@ _INFINITE = {"plane": ("u", "v"), "cylinder": ("v",), "cone": ("v",), "sphere": 
 _SUBSCRIPTS = str.maketrans("0123456789", "₀₁₂₃₄₅₆₇₈₉")
 
 
+_SUBSCRIPT_DIGITS = frozenset("₀₁₂₃₄₅₆₇₈₉")
+
+
 def subscript(i: int) -> str:
     return str(i).translate(_SUBSCRIPTS)
+
+
+def indexed(label: str, i: int) -> str:
+    """``P`` → ``P₃``; a label that already ends in a subscript gets a comma, ``P₁`` → ``P₁,₃``,
+    so the 3rd point of ``P₁`` cannot collide with the 13th argument ``P₁₃``."""
+    return f"{label},{subscript(i)}" if label[-1:] in _SUBSCRIPT_DIGITS else f"{label}{subscript(i)}"
 
 
 # --- vectors ---------------------------------------------------------------
@@ -251,23 +260,67 @@ def _single(obj, label: str | None, u, v) -> list[dict]:
 
 
 # --- results and containers --------------------------------------------------
-def _leaves(payload) -> list:
-    """Geometry objects anywhere inside a result payload (parameters are dropped)."""
+_NOT_NUMERIC = object()
+
+
+def _numeric(x):
+    """A parameter as JSON: a number (None when not finite), a tuple as a list; ``_NOT_NUMERIC`` otherwise."""
+    if isinstance(x, bool):
+        return _NOT_NUMERIC
+    if isinstance(x, int):
+        return x
+    if isinstance(x, float):
+        return x if math.isfinite(x) else None
+    if isinstance(x, (list, tuple)):
+        items = [_numeric(i) for i in x]
+        return _NOT_NUMERIC if any(i is _NOT_NUMERIC for i in items) else items
+    return _NOT_NUMERIC
+
+
+def _hit(item):
+    """``(geometry, params)`` for a hit tuple such as ``(t, P, s)``: exactly one geometry and
+    at least one number (or tuple of numbers); None for anything else."""
+    if not isinstance(item, tuple):
+        return None
+    geoms = [x for x in item if type(x).__name__ in GEOMETRY]
+    if len(geoms) != 1 or len(item) < 2:
+        return None
+    params = [_numeric(x) for x in item if x is not geoms[0]]
+    if any(p is _NOT_NUMERIC for p in params):
+        return None
+    return geoms[0], params
+
+
+def _leaves(payload) -> list[tuple]:
+    """``(geometry, params)`` for every geometry inside a result payload; ``params`` are the
+    numbers of its hit tuple (``(t, P, s)`` → ``[t, s]``), None for a bare geometry."""
     if payload is None:
         return []
     if type(payload).__name__ in GEOMETRY:
-        return [payload]
+        return [(payload, None)]
+    hit = _hit(payload)
+    if hit is not None:
+        return [hit]
     if isinstance(payload, (list, tuple)):
         return [leaf for item in payload for leaf in _leaves(item)]
     return []
 
 
-def _labelled(items: list, label: str | None, u, v) -> list[dict]:
-    if len(items) == 1:
-        return _single(items[0], label, u, v)
+def _labelled(items: list, label: str | None, u, v, tag: str | None = None) -> list[dict]:
+    """One part per ``(geometry, params)``, labelled ``P₁``, ``P₂`` … when there are several;
+    the result tag and the hit parameters go to ``meta`` (spec §3.3)."""
     parts: list[dict] = []
-    for i, item in enumerate(items, start=1):
-        parts += _single(item, f"{label}{subscript(i)}" if label else None, u, v)
+    for i, (item, params) in enumerate(items, start=1):
+        name = label if len(items) == 1 or not label else indexed(label, i)
+        [part] = _single(item, name, u, v)
+        meta: dict = {}
+        if tag is not None:
+            meta["tag"] = tag
+        if params is not None:
+            meta["params"] = params
+        if meta:
+            part["meta"] = meta
+        parts.append(part)
     return parts
 
 
@@ -289,7 +342,7 @@ def _result(tag: str, payload, label: str | None, u, v) -> list[dict]:
     if tag == "not_analytic":
         return [_note("no closed form — try geomcore.intersect_marching", label, "warn")]
     leaves = _leaves(payload)
-    parts = _labelled(leaves, label, u, v)
+    parts = _labelled(leaves, label, u, v, tag)
     if tag in INFO_NOTES:
         parts.append(_note(INFO_NOTES[tag], label))
     known = tag in INFO_NOTES or tag in POINT_TAGS or tag in CURVE_TAGS

@@ -8,7 +8,7 @@ import urllib.request
 
 import pytest
 
-from geomcore_viewer.server import APP, PROTOCOL, Server
+from geomcore_viewer.server import APP, PROTOCOL, Server, allowed_hosts
 
 
 def _obj(object_id, **geom):
@@ -256,3 +256,14 @@ def test_no_cross_origin_read_header(server):
     assert "Access-Control-Allow-Origin" not in headers
     with urllib.request.urlopen(f"{server.url}/events", timeout=5) as res:
         assert res.headers.get("Access-Control-Allow-Origin") is None
+
+
+def test_refusal_names_the_app(server):
+    status, _, body = _raw(server, "GET", "/api/health", host="127.0.0.1:1")
+    assert status == 403
+    assert json.loads(body)["app"] == APP
+
+
+def test_port_80_accepts_the_bare_host_browsers_send():
+    assert allowed_hosts(8765) == {"127.0.0.1:8765", "localhost:8765"}
+    assert allowed_hosts(80) == {"127.0.0.1:80", "localhost:80", "127.0.0.1", "localhost"}
