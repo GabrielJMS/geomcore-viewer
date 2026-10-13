@@ -1,6 +1,6 @@
 # geomcore-viewer
 
-A live, geometry-aware browser viewer for [geomcore](https://github.com/GabrielJMS/geomcore).
+A live, geometry-aware browser viewer for [geomcore](https://github.com/geomcore/geomcore).
 Write geomcore code, call `view.add(...)`, and the curves, surfaces and
 intersection points appear — exactly, not as hand-sampled polylines — in a
 browser tab that updates as your script, debugger or notebook runs.
@@ -142,7 +142,7 @@ scripts/rust-live-check.sh 8797     # Rust examples against a real server
 
 ## Live demo
 
-<https://gabrieljms.github.io/geomcore-viewer/> — the bundled sample scene.
+<https://geomcore.github.io/geomcore-viewer/> — the bundled sample scene.
 
 ## License
 

@@ -5,7 +5,7 @@ It speaks scene protocol v2 ([`protocol/SCENE.md`](../../protocol/SCENE.md)), th
 
 ```toml
 [dependencies]
-geomcore-viewer = { git = "https://github.com/GabrielJMS/geomcore-viewer", features = ["geomcore"] }
+geomcore-viewer = { git = "https://github.com/geomcore/geomcore-viewer", features = ["geomcore"] }
 ```
 
 ```rust
