@@ -1,0 +1,126 @@
+name: Release
+# Pushing a tag vX.Y.Z publishes the Python package to PyPI and the Rust client to crates.io
+# (both through trusted publishing, no stored tokens), then attaches the files to the GitHub release.
+# Run it by hand with an existing tag to publish whatever of that version is not out yet.
+on:
+  push:
+    tags: ["v*.*.*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing tag to release, e.g. v0.2.0"
+        required: true
+
+env:
+  TAG: ${{ inputs.tag || github.ref_name }}
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { ref: "${{ env.TAG }}" }
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - name: Verify the tag matches both package versions
+        run: |
+          case "$TAG" in v[0-9]*.[0-9]*.[0-9]*) ;; *) echo "::error::$TAG is not a vX.Y.Z tag"; exit 1 ;; esac
+          tag="${TAG#v}"
+          py="$(python -c 'import tomllib; print(tomllib.load(open("python/pyproject.toml", "rb"))["project"]["version"])')"
+          rs="$(cargo metadata --no-deps --format-version 1 --manifest-path clients/rust/Cargo.toml \
+            | jq -r '.packages[] | select(.name == "geomcore-viewer") | .version')"
+          for v in "python:$py" "rust:$rs"; do
+            if [ "${v#*:}" != "$tag" ]; then
+              echo "::error::the ${v%%:*} package is at version ${v#*:} but the tag is $tag"
+              exit 1
+            fi
+          done
+      - run: pip install pytest && pytest python/tests -q
+        env: { PYTHONPATH: python }
+      - run: cargo test
+        working-directory: clients/rust
+
+  build-python:
+    needs: check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { ref: "${{ env.TAG }}" }
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm, cache-dependency-path: frontend/package-lock.json }
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - run: npm ci
+        working-directory: frontend
+      - run: scripts/bundle-frontend.sh
+      - run: pip install build twine && python -m build python/ && twine check --strict python/dist/*
+      - run: unzip -Z1 python/dist/*.whl | grep -x 'geomcore_viewer/_frontend/index.html'
+      - uses: actions/upload-artifact@v4
+        with: { name: python-dist, path: python/dist }
+
+  publish-pypi:
+    needs: build-python
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/p/geomcore-viewer
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with: { name: python-dist, path: dist }
+      - uses: pypa/gh-action-pypi-publish@release/v1
+        with: { skip-existing: true }
+
+  publish-crates-io:
+    needs: check
+    runs-on: ubuntu-latest
+    environment: crates-io
+    permissions:
+      id-token: write
+    defaults: { run: { working-directory: clients/rust } }
+    steps:
+      - uses: actions/checkout@v4
+        with: { ref: "${{ env.TAG }}" }
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Skip if the version is already on crates.io
+        id: exists
+        run: |
+          v="${TAG#v}"
+          if curl -fsS -A "geomcore-viewer-release-workflow" \
+              "https://crates.io/api/v1/crates/geomcore-viewer/$v" >/dev/null 2>&1; then
+            echo "geomcore-viewer $v is already on crates.io; skipping publish"
+            echo "published=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "published=false" >> "$GITHUB_OUTPUT"
+          fi
+      - uses: rust-lang/crates-io-auth-action@v1
+        id: auth
+        if: steps.exists.outputs.published == 'false'
+      - run: cargo publish && mkdir -p crate-dist && cp target/package/geomcore-viewer-*.crate crate-dist/
+        if: steps.exists.outputs.published == 'false'
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}
+      - uses: actions/upload-artifact@v4
+        if: steps.exists.outputs.published == 'false'
+        with: { name: crate-dist, path: clients/rust/crate-dist }
+
+  github-release:
+    needs: [publish-pypi, publish-crates-io]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with: { pattern: "*-dist", merge-multiple: true, path: dist }
+      - name: Create the release, or replace its files with the ones just published
+        run: |
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" dist/* --clobber
+          else
+            gh release create "$TAG" dist/* --title "$TAG" --generate-notes --verify-tag
+          fi
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
