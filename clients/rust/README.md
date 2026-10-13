@@ -1,15 +1,15 @@
 # geomcore-viewer (Rust client)
 
-Show geometry live in the [geomcore-viewer](../../README.md) browser tab from Rust.
-It speaks scene protocol v2 ([`protocol/SCENE.md`](../../protocol/SCENE.md)), the same as the Python client.
+Show geometry live in the [geomcore-viewer](https://github.com/geomcore/geomcore-viewer#readme) browser tab from Rust.
+It speaks scene protocol v2 ([`protocol/SCENE.md`](https://github.com/geomcore/geomcore-viewer/blob/main/protocol/SCENE.md)), the same as the Python client.
 
 ```toml
 [dependencies]
-geomcore-viewer = { git = "https://github.com/geomcore/geomcore-viewer", features = ["geomcore"] }
+geomcore-viewer = { version = "0.2", features = ["geomcore"] }   # the feature needs geomcore 0.32
 ```
 
 ```rust
-use geomcore::{Circle3D, Cylinder, Point3D, Vector3D};
+use geomcore::{Circle3D, Cylinder, Point3D, Tolerance, Vector3D};
 use geomcore_viewer::{Geom, Opts, Viewer};
 
 let mut view = Viewer::new("A circle on a cylinder")?;
@@ -17,7 +17,7 @@ let cylinder = Cylinder::new(Point3D::ORIGIN, Vector3D::Z, 2.0)?;
 let ring = Circle3D::new(Point3D::new(0.0, 0.0, 1.0), Vector3D::Z, 2.0)?;
 let s = view.add(Geom::from(&cylinder).window(None, Some([-2.0, 2.0])), Opts::new().label("S"))?;
 view.add(&ring, Opts::new().label("C"))?;
-view.pcurve(&ring.parametrize_on(cylinder)?, &s, Opts::new().label("C in (u, v)"))?;
+view.pcurve(&ring.parametrize_on(cylinder, Tolerance::DEFAULT)?, &s, Opts::new().label("C in (u, v)"))?;
 ```
 
 The viewer server is Python's, and Rust never starts it. Run

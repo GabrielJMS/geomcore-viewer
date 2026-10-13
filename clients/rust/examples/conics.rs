@@ -4,17 +4,16 @@
 //!        cargo run --example conics --features geomcore
 //! Save:  cargo run --example conics --features geomcore -- --save conics.json
 
+use geomcore::curves::Curve3D;
 use geomcore::{
-    Circle3D, CircleConic3DIntersection, Ellipse3D, Frame3D, Hyperbola3D, Line3D, LineCircle3DIntersection,
-    LineConic3DIntersection, Point3D, Tolerance, Vector3D,
+    Circle3D, CurveCurveIntersection, Ellipse3D, Frame3D, Hyperbola3D, Intersect, Line3D, Point3D, Tolerance, Vector3D,
 };
 use geomcore_viewer::{Opts, Viewer};
 
-/// The points of a line ∩ conic result.
-fn line_conic(hits: LineConic3DIntersection) -> Vec<Point3D> {
-    match hits {
-        LineConic3DIntersection::Points(a, b) => vec![a.point, b.point],
-        LineConic3DIntersection::Tangent(a) => vec![a.point],
+/// Where two curves meet, through geomcore's one entry point for exact intersections.
+fn meet(a: impl Into<Curve3D>, b: impl Into<Curve3D>) -> Vec<Point3D> {
+    match a.into().intersect(&b.into(), Tolerance::DEFAULT) {
+        CurveCurveIntersection::Points(hits) => hits.iter().map(|hit| hit.point).collect(),
         _ => vec![],
     }
 }
@@ -22,7 +21,6 @@ fn line_conic(hits: LineConic3DIntersection) -> Vec<Point3D> {
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let save = std::env::args().skip_while(|a| a != "--save").nth(1);
     let mut view = Viewer::new("Conics and their intersections")?;
-    let tol = Tolerance::DEFAULT;
 
     let e = Ellipse3D::from_frame(Frame3D::WORLD, 3.0, 2.0)?;
     let c = Circle3D::new(Point3D::new(2.0, 1.0, 0.0), Vector3D::Z, 1.5)?;
@@ -36,20 +34,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     view.add(&l, conics().label("L"))?;
 
     let points = |label: &str| Opts::new().label(label).group("intersections");
-    let p = match c.intersect_ellipse(&e, tol) {
-        CircleConic3DIntersection::Points(hits) => hits.iter().map(|hit| hit.point).collect(),
-        CircleConic3DIntersection::Tangent(hit) => vec![hit.point],
-        _ => vec![],
-    };
-    view.add_all(p, points("P"))?;
-    view.add_all(line_conic(l.intersect_ellipse(&e, tol)), points("Q"))?;
-    let r = match l.intersect_circle(&c, tol) {
-        LineCircle3DIntersection::Points((_, a), (_, b)) => vec![a, b],
-        LineCircle3DIntersection::Tangent(_, a) => vec![a],
-        _ => vec![],
-    };
-    view.add_all(r, points("R"))?;
-    view.add_all(line_conic(l.intersect_hyperbola(&h, tol)), points("S"))?;
+    view.add_all(meet(c, e), points("P"))?;
+    view.add_all(meet(l, e), points("Q"))?;
+    view.add_all(meet(l, c), points("R"))?;
+    view.add_all(meet(l, h), points("S"))?;
 
     if let Some(path) = save {
         println!("saved {}", view.save(path)?.display());

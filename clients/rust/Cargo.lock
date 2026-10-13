@@ -4,9 +4,9 @@ version = 4
 
 [[package]]
 name = "geomcore"
-version = "0.28.0"
+version = "0.32.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7619a27e2cbad3842687fce6bcdb0cbd0fc1ed966a961d2953f9eec058856a4a"
+checksum = "59da540e2950b156611e4cc87feac2afde9b5e33bd7f8b901628c46f8726ab76"
 
 [[package]]
 name = "geomcore-viewer"
