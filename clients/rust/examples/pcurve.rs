@@ -4,7 +4,7 @@
 //!        cargo run --example pcurve --features geomcore
 //! Save:  cargo run --example pcurve --features geomcore -- --save pcurve.json
 
-use geomcore::{Circle3D, Cylinder, Point3D, Vector3D};
+use geomcore::{Circle3D, Cylinder, Point3D, Tolerance, Vector3D};
 use geomcore_viewer::{Opts, ViewMode, Viewer};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -20,7 +20,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     )?;
     view.add(&ring, Opts::new().label("C"))?;
     // parametrize_on gives the circle's exact image in (u, v): here the line v = 1.
-    view.pcurve(&ring.parametrize_on(cylinder)?, &s, Opts::new().label("C in (u, v)"))?;
+    view.pcurve(&ring.parametrize_on(cylinder, Tolerance::DEFAULT)?, &s, Opts::new().label("C in (u, v)"))?;
 
     if let Some(path) = save {
         println!("saved {}", view.save(path)?.display());

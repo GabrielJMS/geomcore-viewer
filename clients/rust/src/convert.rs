@@ -217,7 +217,7 @@ impl From<&Surface> for Geom {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use geomcore::{Axis3D, Transform, Vector2D};
+    use geomcore::{Axis3D, Tolerance, Transform, Vector2D};
 
     const TOL: f64 = 1e-9;
 
@@ -322,11 +322,11 @@ mod tests {
     fn pcurves_from_parametrize_on_read_as_u_v() {
         let cylinder = Cylinder::new(Point3D::ORIGIN, v(0.0, 0.0, 1.0), 2.0).unwrap();
         let ring = Circle3D::new(p(0.0, 0.0, 3.0), v(0.0, 0.0, 1.0), 2.0).unwrap();
-        let pc = ring.parametrize_on(cylinder).unwrap();
+        let pc = ring.parametrize_on(cylinder, Tolerance::DEFAULT).unwrap();
         assert_eq!(Geom::from(&pc), Geom::line([0.0, 3.0, 0.0], [1.0, 0.0, 0.0]));
         let plane = Plane::new(Point3D::ORIGIN, v(0.0, 0.0, 1.0)).unwrap();
         let circle = Circle3D::new(p(1.0, 1.0, 0.0), v(0.0, 0.0, 1.0), 1.0).unwrap();
-        let g = Geom::from(&circle.parametrize_on(plane).unwrap());
+        let g = Geom::from(&circle.parametrize_on(plane, Tolerance::DEFAULT).unwrap());
         for t in TS {
             let (uv, xyz) = (eval_curve(&g, t), circle.eval_point(t));
             close(plane.eval_point(uv[0], uv[1]), p3(xyz));

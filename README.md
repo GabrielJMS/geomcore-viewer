@@ -111,7 +111,8 @@ surface in 3D; hovering the surface or a pcurve in 3D puts one in the pane.
 
 ## Rust
 
-`clients/rust` is the same client for Rust programs: `Viewer::add`, labels,
+`cargo add geomcore-viewer --features geomcore` (crates.io; the feature takes
+geomcore 0.32). `clients/rust` is the same client for Rust programs: `Viewer::add`, labels,
 groups, runs and surface windows work as in Python, and with the `geomcore`
 cargo feature geomcore's curves, surfaces, points and `parametrize_on` results
 go straight to `add`. Rust never starts the server: run

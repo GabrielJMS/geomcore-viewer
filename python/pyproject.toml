@@ -8,6 +8,23 @@ version = "0.2.0"
 description = "Live, geometry-aware browser viewer for geomcore: Python client + local server. Stdlib only."
 requires-python = ">=3.9"
 license = "MIT OR Apache-2.0"
+license-files = ["LICENSE-MIT", "LICENSE-APACHE"]
+readme = "README.md"
+keywords = ["geometry", "cad", "visualization", "viewer", "geomcore"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "Programming Language :: Python :: 3",
+    "Topic :: Scientific/Engineering :: Mathematics",
+    "Topic :: Scientific/Engineering :: Visualization",
+]
+
+[project.urls]
+Homepage = "https://github.com/geomcore/geomcore-viewer"
+Source = "https://github.com/geomcore/geomcore-viewer"
+Issues = "https://github.com/geomcore/geomcore-viewer/issues"
+"Hosted viewer" = "https://geomcore.github.io/geomcore-viewer/"
 
 [project.scripts]
 geomcore-viewer = "geomcore_viewer.__main__:main"
