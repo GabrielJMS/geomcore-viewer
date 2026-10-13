@@ -141,6 +141,11 @@ scripts/refresh-fixtures.sh         # re-vendor geomcore's golden fixtures
 scripts/rust-live-check.sh 8797     # Rust examples against a real server
 ```
 
+Releasing: bump `version` in `python/pyproject.toml` and `clients/rust/Cargo.toml`, merge, then push a
+`vX.Y.Z` tag. `.github/workflows/release.yml` checks that the tag matches both versions, publishes to
+PyPI and crates.io through trusted publishing (no tokens), and attaches the files to the GitHub release.
+Run it by hand with an existing tag to publish whatever of that version is not out yet.
+
 ## Live demo
 
 <https://geomcore.github.io/geomcore-viewer/> — the bundled sample scene.
