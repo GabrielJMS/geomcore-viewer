@@ -13,11 +13,11 @@ import geomcore_viewer as gv
 
 view = gv.Viewer("Ellipse ∩ circle")
 E = Ellipse3D.from_frame(Frame3D.world(), 3.0, 2.0)
-C = Circle3D(Point3D(2, 1, 0), Vector3D.z(), 1.5)
+C = Circle3D(Point3D(2, 1, 0), Vector3D.unit_z(), 1.5)
 
 view.add(E, label="E")
 view.add(C, label="C")
-view.add(C.intersect_ellipse(E), label="P")   # → P₁, P₂
+view.add(C.intersect(E), label="P")   # → P₁, P₂
 ```
 
 - **One verb.** `add` takes geomcore curves, surfaces and points, the result
