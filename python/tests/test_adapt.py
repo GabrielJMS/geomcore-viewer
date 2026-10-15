@@ -3,6 +3,7 @@ import math
 import pytest
 
 from geomcore_viewer.adapt import (
+    ACCENT,
     PALETTE,
     TAU,
     _frame,
@@ -321,7 +322,8 @@ def test_curve_projection_draws_target_points_and_dashed_connector():
     assert by_key["P·closest"]["geom"] == {"type": "point", "p": [1.0, 0.0, 0.0]}
     assert by_key["P·query"]["label"] == "query point"
     assert by_key["P·closest"]["label"] == "closest point, d = 2"
-    assert by_key["P·closest"]["style"]["color"] == PALETTE[0]
+    assert by_key["P·closest"]["style"]["color"] == ACCENT
+    assert by_key["P·query"]["style"]["color"] not in (ACCENT, *PALETTE)
     connector = by_key["P·distance"]
     assert connector["geom"] == {"type": "polyline", "points": [[1.0, 2.0, 0.0], [1.0, 0.0, 0.0]]}
     assert connector["style"]["dashed"] is True
@@ -334,6 +336,7 @@ def test_curve_projection_2d_lifts_points_to_z_zero():
     parts = to_objects(CurveProjection2D(circle, Point3D(3, 0), Point3D(1, 0), 2.0, 0.0), "Q")
     assert len(parts) == 4
     assert parts[1]["geom"]["p"] == [3.0, 0.0, 0.0]
+    assert parts[2]["geom"]["p"] == [1.0, 0.0, 0.0]
 
 
 def test_surface_projection_windows_the_surface_around_the_closest_point():
@@ -353,7 +356,34 @@ def test_projection_without_a_label_still_groups_and_names_its_parts():
     line = fake("Line3D", X_LINE, origin=Point3D(0, 0, 0), direction=Vector3D(1, 0, 0))
     parts = to_objects(CurveProjection(line, Point3D(1, 2, 0), Point3D(1, 0, 0), 2.0, 1.0))
     assert len({p["key"] for p in parts}) == 4
-    assert len({p["group"] for p in parts}) == 1
+    assert {p["group"] for p in parts} == {"projection on Line3D"}
+    again = to_objects(CurveProjection(line, Point3D(0, 5, 0), Point3D(0, 0, 0), 5.0, 0.0))
+    assert {p["group"] for p in again} == {"projection on Line3D"}
+
+
+def test_user_window_overrides_the_automatic_one():
+    plane = fake("Plane", XY_PLANE)
+    result = SurfaceProjection(plane, Point3D(10, 20, 3), Point3D(10, 20, 0), 3.0, 10.0, 20.0)
+    [target, *_] = to_objects(result, "S", u=(0, 2), v=(-1, 1))
+    assert target["geom"]["window"] == {"u": [0.0, 2.0], "v": [-1.0, 1.0]}
+
+
+def test_bspline_surface_target_is_sampled_around_the_closest_point():
+    surface = fake("BSplineSurface", XY_PLANE)
+    result = SurfaceProjection(surface, Point3D(1, 2, 3), Point3D(1, 2, 0), 3.0, 1.0, 2.0)
+    [target, *_] = to_objects(result, "B")
+    assert target["geom"]["type"] == "mesh"
+    xs = [p[0] for p in target["geom"]["vertices"]]
+    assert min(xs) == pytest.approx(1.0 - 4.5) and max(xs) == pytest.approx(1.0 + 4.5)
+
+
+def test_accent_never_matches_the_target_colour_on_a_fresh_viewer():
+    from geomcore_viewer.viewer import Viewer
+
+    viewer = Viewer.__new__(Viewer)
+    viewer._next_color = 0
+    viewer.objects = {}
+    assert all(viewer._color() != ACCENT for _ in range(len(PALETTE) * 2))
 
 
 def test_tuple_results_still_work_next_to_projections():
