@@ -178,7 +178,8 @@ class Viewer:
             previous = self.objects.get(object_id, {}).get("style", {})
             part_style = part.get("style", {})
             color = previous.get("color") or part_style.get("color") or self._color()
-            obj["style"] = {**part_style, "color": color, **style}
+            applied = {k: x for k, x in style.items() if k not in part.get("keeps_style", ())}
+            obj["style"] = {**part_style, "color": color, **applied}
         if extras:
             obj["extras"] = dict(extras)
         if part.get("meta"):

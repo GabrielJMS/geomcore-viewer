@@ -483,6 +483,17 @@ class CurveCurveExtrema:
         self.first, self.second, self.minima = first, second, list(minima)
 
 
+class _XyProjection:
+    def __init__(self, point):
+        self.u, self.v = point.x, point.y
+
+
+def xy_plane():
+    plane = fake("Plane", XY_PLANE)
+    type(plane).project_point = lambda self, point: _XyProjection(point)
+    return plane
+
+
 Y_LINE = {"type": "line", "o": [0.0, 1.0, 1.0], "d": [0.0, 1.0, 0.0]}
 CIRCLE = {"type": "circle", "frame": _frame([0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 0.0, 1.0]), "r": 1.0}
 
@@ -523,7 +534,7 @@ def test_default_group_names_both_operands_and_is_deterministic():
 
 def test_tangent_hit_and_tangent_curve_are_labelled():
     result = SurfaceSurfaceIntersection(
-        fake("Plane", XY_PLANE), fake("Plane", XY_PLANE),
+        xy_plane(), xy_plane(),
         curves=[IntersectionCurve(unit_circle(), tangent=True), IntersectionCurve(x_line())],
         contact_points=[Point3D(0, 0, 0)],
     )
@@ -555,7 +566,7 @@ def test_unbounded_overlap_falls_back_to_the_bounded_operand_then_the_whole_oper
 
 def test_incomplete_result_warns_and_draws_each_region_as_a_dashed_box():
     regions = [Region(Point3D(0, 0, 0), Point3D(1, 2, 3)), Region(Point3D(5, 5, 5), Point3D(6, 6, 6))]
-    result = SurfaceSurfaceIntersection(fake("Plane", XY_PLANE), fake("Plane", XY_PLANE),
+    result = SurfaceSurfaceIntersection(xy_plane(), xy_plane(),
                                         completeness=Completeness("INCOMPLETE", "iteration limit", regions))
     parts = to_objects(result, "I")
     keys = by_key(parts)
@@ -570,7 +581,7 @@ def test_incomplete_result_warns_and_draws_each_region_as_a_dashed_box():
 
 
 def test_box_path_covers_all_twelve_segments():
-    result = SurfaceSurfaceIntersection(fake("Plane", XY_PLANE), fake("Plane", XY_PLANE),
+    result = SurfaceSurfaceIntersection(xy_plane(), xy_plane(),
                                         completeness=Completeness("INCOMPLETE", None,
                                                                   [Region(Point3D(0, 0, 0), Point3D(1, 1, 1))]))
     points = by_key(to_objects(result, "I"))["I·region1"]["geom"]["points"]
@@ -598,8 +609,15 @@ def test_empty_intersection_keeps_operands_and_says_empty():
 
 
 def test_coincident_surfaces_get_a_note():
-    result = SurfaceSurfaceIntersection(fake("Plane", XY_PLANE), fake("Plane", XY_PLANE), coincident=True)
+    result = SurfaceSurfaceIntersection(xy_plane(), xy_plane(), coincident=True)
     assert "coincident" in by_key(to_objects(result, "C"))["C·coincident"]["geom"]["text"]
+
+
+def test_reason_is_named_not_shown_as_an_enum_repr():
+    reason = Named("BUDGET_EXHAUSTED")
+    result = SurfaceSurfaceIntersection(xy_plane(), xy_plane(), completeness=Completeness("INCOMPLETE", reason, []))
+    text = by_key(to_objects(result, "I"))["I·status"]["geom"]["text"]
+    assert text.endswith("missing: budget exhausted")
 
 
 def test_user_style_wins_over_recipe_defaults():
@@ -610,7 +628,22 @@ def test_user_style_wins_over_recipe_defaults():
     result = CurveCurveIntersection(x_line(), unit_circle(), hits=[CurveCurveHit(Point3D(1, 0, 0), 0.0, 0.0)])
     built = [viewer._build(p, {"opacity": 0.2, "color": "#000000"}, None, {}, None, None)
              for p in to_objects(result, "U") if p["geom"]["type"] != "note"]
-    assert all(o["style"]["opacity"] == 0.2 and o["style"]["color"] == "#000000" for o in built)
+    assert all(o["style"]["color"] == "#000000" for o in built)
+    assert [o["style"].get("opacity") for o in built] == [0.2, 0.2, None]
+
+
+def test_user_opacity_applies_to_the_operands_only():
+    from geomcore_viewer.viewer import Viewer
+
+    viewer = Viewer.__new__(Viewer)
+    viewer._next_color, viewer._next_auto, viewer.run, viewer.objects = 0, 0, "abcdef", {}
+    result = CurveCurveIntersection(x_line(), unit_circle(), overlaps=[CurveCurveOverlap((1.0, 3.0), (0.0, 1.0))],
+                                    hits=[CurveCurveHit(Point3D(1, 0, 0), 0.0, 0.0)])
+    built = {p["key"]: viewer._build(p, {"opacity": 0.2}, None, {}, None, None)
+             for p in to_objects(result, "U") if p["geom"]["type"] != "note"}
+    assert built["U·first"]["style"]["opacity"] == built["U·second"]["style"]["opacity"] == 0.2
+    for key in ("U·hit1", "U·overlap1"):
+        assert "opacity" not in built[key]["style"]
 
 
 def test_extrema_draw_a_dashed_segment_per_minimum_labelled_with_its_distance():
@@ -669,3 +702,93 @@ def test_real_geomcore_intersections_and_extrema_display():
     assert by_key(empty)["F·note"]["geom"]["text"] == "F: ∅"
     extrema = to_objects(geomcore.curve_curve_extrema(line, Line3D(P(0, 1, 1), V(0, 1, 0))), "G")
     assert by_key(extrema)["G·minimum1"]["label"] == "d = 1"
+
+
+def test_unbounded_operand_window_follows_the_result_not_the_scene():
+    plane = xy_plane()
+    far = Region(Point3D(100, 200, 0), Point3D(110, 230, 0))
+    result = SurfaceSurfaceIntersection(plane, unit_circle_surface(), completeness=Completeness("INCOMPLETE", None, [far]))
+    window = by_key(to_objects(result, "W"))["W·first"]["geom"]["window"]
+    assert window["u"][0] < 100 and window["u"][1] > 110 and window["v"][0] < 200 and window["v"][1] > 230
+    again = by_key(to_objects(result, "W"))["W·first"]["geom"]["window"]
+    assert again == window
+
+
+def test_unbounded_operand_without_anything_finite_gets_a_fixed_window():
+    window = by_key(to_objects(SurfaceSurfaceIntersection(xy_plane(), xy_plane()), "N"))["N·first"]["geom"]["window"]
+    assert window == {"u": [-5.0, 5.0], "v": [-5.0, 5.0]}
+
+
+def test_user_window_wins_over_the_operand_window():
+    result = SurfaceSurfaceIntersection(xy_plane(), xy_plane())
+    window = by_key(to_objects(result, "N", u=(0, 2), v=(-1, 1)))["N·first"]["geom"]["window"]
+    assert window == {"u": [0.0, 2.0], "v": [-1.0, 1.0]}
+
+
+def unit_circle_surface():
+    """A bounded surface stand-in: a sphere named as geomcore's."""
+    return fake("Sphere", {"type": "sphere", "frame": _frame([0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 0.0, 1.0]),
+                           "r": 1.0}, center=Point3D(0, 0, 0), radius=1.0)
+
+
+def _live():
+    pytest.importorskip("geomcore")
+    import geomcore
+
+    if not hasattr(geomcore, "CurveCurveIntersection"):
+        pytest.skip("needs geomcore >= 0.36")
+    return geomcore
+
+
+def test_live_line_in_plane_overlap_does_not_crash():
+    _live()
+    from geomcore import Point3D as P, Vector3D as V
+    from geomcore.curves import Line3D
+    from geomcore.surfaces import Plane
+
+    result = Line3D(P(0, 0, 0), V(1, 0, 0)).intersect(Plane(P(0, 0, 0), world_z(V)))
+    keys = by_key(to_objects(result, "L"))
+    assert keys["L·overlap1"]["geom"]["type"] == "line"
+    assert keys["L·second"]["geom"]["window"]["u"][0] < 0 < keys["L·second"]["geom"]["window"]["u"][1]
+
+
+def test_live_plane_sphere_window_is_local_whatever_the_scene_holds():
+    _live()
+    from geomcore import Point3D as P, Vector3D as V
+    from geomcore.surfaces import Plane, Sphere
+    from geomcore_viewer.viewer import Viewer
+
+    result = Plane(P(500, 500, 0), world_z(V)).intersect(Sphere(P(510, 500, 1), 3.0))
+    viewer = Viewer.__new__(Viewer)
+    viewer._next_color, viewer._next_auto, viewer.run, viewer.objects = 0, 0, "abcdef", {}
+    viewer.objects["far"] = {"id": "far", "geom": {"type": "point", "p": [9000.0, 0.0, 0.0]}}
+    window = by_key(to_objects(result, "S"))["S·first"]["geom"]["window"]
+    built = viewer._build(by_key(to_objects(result, "S"))["S·first"], {}, None, {}, None, None)
+    assert built["geom"]["window"] == window
+    u0, u1 = window["u"]
+    assert u0 < 7 and u1 > 13 and u1 - u0 < 20
+
+
+def test_live_every_result_family_displays():
+    geomcore = _live()
+    from geomcore import Point2D, Point3D as P, Vector2D, Vector3D as V
+    from geomcore.curves import Circle2D, Circle3D, Line2D, Line3D
+    from geomcore.surfaces import Cone, Cylinder, Plane, Sphere
+
+    z = world_z(V)
+    results = {
+        "curve-curve": Circle3D(P(0, 0, 0), z, 1.0).intersect(Line3D(P(0, 0, 0), V(1, 0, 0))),
+        "curve-curve 2D": Circle2D(Point2D(0, 0), 1.0).intersect(Line2D(Point2D(0, 0), Vector2D(1, 0))),
+        "curve-surface": Line3D(P(0, 0, -2), z).intersect(Cylinder(P(0, 0, 0), z, 1.0)),
+        "surface-surface": Cylinder(P(0, 0, 0), z, 2.0).intersect(Plane(P(0, 0, 0), V(1, 0, 0))),
+        "cone-sphere": Cone.from_frame(__import__("geomcore").Frame3D.world(), 0.4, 2.0).intersect(
+            Sphere(P(0, 0, 0), 3.0)),
+        "extrema": geomcore.curve_curve_extrema(Line3D(P(0, 0, 0), V(1, 0, 0)), Line3D(P(0, 1, 1), V(0, 1, 0))),
+    }
+    for name, result in results.items():
+        parts = to_objects(result, "R")
+        assert {p["group"] for p in parts if "group" in p} == {"R"}, name
+        for part in parts:
+            window = part["geom"].get("window")
+            if window:
+                assert all(abs(c) < 100 for bounds in window.values() for c in bounds), name
