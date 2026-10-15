@@ -257,6 +257,8 @@ def _single(obj, label: str | None, u, v) -> list[dict]:
     elif name == "BSplineCurve3D":
         t0, t1 = obj.bounds()
         geom = {"type": "polyline", "points": sample_curve(obj.eval_point, t0, t1, _BSPLINE_SEGMENTS)}
+    elif name in TRIMMED_CURVES:
+        geom = _sampled_range(obj, *obj.bounds())["geom"]
     elif name == "BSplineSurface":
         if u is None or v is None:
             raise TypeError("BSplineSurface has no domain getter in geomcore yet: pass u=(u0, u1) and v=(v0, v1)")
@@ -507,11 +509,7 @@ def _operands(result, label: str, reference_points: list, u, v) -> list[dict]:
     operands = (result.first, result.second)
     parts = []
     for name, obj in zip(("first", "second"), operands):
-        kind = type(obj).__name__
-        if kind in TRIMMED_CURVES:
-            part = _sampled_range(obj, *obj.bounds())
-        else:
-            [part] = _single(obj, None, u, v)
+        [part] = _single(obj, None, u, v)
         parts.append({**part, "key": f"{label}·{name}", "group": label, "style": {"opacity": OPERAND_OPACITY}})
     points = list(reference_points)
     for part in parts:
@@ -530,12 +528,22 @@ def _sampled_range(curve, first: float, last: float) -> dict:
     return {"label": None, "geom": {"type": "polyline", "points": points}}
 
 
+def _curve_operand(result):
+    """The curve of a curve-surface result, whichever side the receiver was: the ``curve`` property
+    when geomcore provides it, else the operand that is not a surface."""
+    curve = getattr(result, "curve", None)
+    if curve is not None:
+        return curve
+    first_is_surface = type(result.first).__name__ in SURFACES | {"BSplineSurface"}
+    return result.second if first_is_surface else result.first
+
+
 def _overlap_part(result, overlap, key: str, label: str) -> dict:
     """The operand over the overlap's parameter range: a curve-curve overlap carries one range per
     operand (the first operand's when it is bounded, else the second's); a curve in a surface is a
     plain ``(first, last)`` range of the curve. Unbounded everywhere draws the whole first operand."""
     if isinstance(overlap, (tuple, list)):
-        candidates = ((result.first, tuple(overlap)),)
+        candidates = ((_curve_operand(result), tuple(overlap)),)
     else:
         candidates = ((result.first, overlap.first_range), (result.second, overlap.second_range))
     for operand, bounds in candidates:
@@ -543,7 +551,7 @@ def _overlap_part(result, overlap, key: str, label: str) -> dict:
             part = _sampled_range(operand, *bounds)
             break
     else:
-        [part] = _single(result.first, None, None, None)
+        [part] = _single(_curve_operand(result) if isinstance(overlap, (tuple, list)) else result.first, None, None, None)
     return {**part, "key": key, "group": label, "style": {"color": ACCENT}, "keeps_style": ("opacity",)}
 
 

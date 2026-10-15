@@ -792,3 +792,94 @@ def test_live_every_result_family_displays():
             window = part["geom"].get("window")
             if window:
                 assert all(abs(c) < 100 for bounds in window.values() for c in bounds), name
+
+
+def _live_curve_in_plane_cases():
+    from geomcore import Point3D as P, Vector3D as V
+    from geomcore.curves import Circle3D, Line3D
+    from geomcore.surfaces import Plane
+
+    z = V.unit_z()
+    plane = Plane(P(0, 0, 0), z)
+    return {
+        "circle": (plane, Circle3D(P(0, 0, 0), z, 2.0), 4.0 * math.pi),
+        "line": (plane, Line3D(P(0, 0, 0), V(1, 0, 0)), None),
+    }
+
+
+@pytest.mark.parametrize("name", ["circle", "line"])
+@pytest.mark.parametrize("surface_first", [True, False])
+def test_live_curve_in_plane_overlap_samples_the_curve_whatever_the_receiver(name, surface_first):
+    _live()
+    plane, curve, _ = _live_curve_in_plane_cases()[name]
+    result = plane.intersect(curve) if surface_first else curve.intersect(plane)
+    overlap = by_key(to_objects(result, "O"))["O·overlap1"]
+    if name == "circle":
+        assert overlap["geom"]["type"] == "polyline"
+        radii = {round(math.hypot(p[0], p[1]), 6) for p in overlap["geom"]["points"]}
+        assert radii == {2.0}
+        assert {p[2] for p in overlap["geom"]["points"]} == {0.0}
+    else:
+        assert overlap["geom"]["type"] in ("line", "polyline")
+
+
+def test_curve_operand_prefers_the_curve_property_then_falls_back_to_the_type():
+    from geomcore_viewer.adapt import _curve_operand
+
+    class Result:
+        first, second = "surface-ish", "curve-ish"
+
+    with_property = Result()
+    with_property.curve = "the curve"
+    assert _curve_operand(with_property) == "the curve"
+    plane = fake("Plane", {"type": "plane"})
+    line = fake("Line3D", {"type": "line"})
+
+    class ByType:
+        def __init__(self, first, second):
+            self.first, self.second = first, second
+
+    assert _curve_operand(ByType(plane, line)) is line
+    assert _curve_operand(ByType(line, plane)) is line
+
+
+def test_live_projection_onto_a_trimmed_curve_draws_the_trimmed_range():
+    _live()
+    from geomcore import Point2D, Point3D as P, Vector2D, Vector3D as V
+    from geomcore.curves import Circle2D, Circle3D, Line2D, Line3D, TrimmedCurve2D, TrimmedCurve3D
+
+    trimmed_3d = TrimmedCurve3D(Line3D(P(0, 0, 0), V(1, 0, 0)), 1.0, 3.0)
+    parts = to_objects(trimmed_3d.project_point(P(2, 1, 0)), "T")
+    target = by_key(parts)["T·target"]
+    assert target["geom"]["type"] == "polyline"
+    assert {p[0] for p in target["geom"]["points"]} >= {1.0, 3.0}
+    assert min(p[0] for p in target["geom"]["points"]) == 1.0 and max(p[0] for p in target["geom"]["points"]) == 3.0
+
+    trimmed_2d = TrimmedCurve2D(Line2D(Point2D(0, 0), Vector2D(1, 0)), 1.0, 3.0)
+    parts_2d = to_objects(trimmed_2d.project_point(Point2D(2, 1)), "U")
+    target_2d = by_key(parts_2d)["U·target"]
+    assert target_2d["geom"]["type"] == "polyline"
+    assert by_key(parts_2d)["U·closest"]["geom"]["p"][2] == 0.0
+
+
+def test_live_default_group_names_are_identical_across_two_calls():
+    _live()
+    from geomcore import Point3D as P, Vector3D as V
+    from geomcore.curves import Circle3D, Line3D
+
+    circle, line = Circle3D(P(0, 0, 0), V.unit_z(), 1.0), Line3D(P(0, 0, 0), V(1, 0, 0))
+    first_call = to_objects(circle.intersect(line))
+    second_call = to_objects(circle.intersect(line))
+    assert [(p["key"], p.get("group")) for p in first_call] == [(p["key"], p.get("group")) for p in second_call]
+    assert {p["group"] for p in first_call if "group" in p} == {"Circle3D × Line3D"}
+
+
+def test_live_2d_closest_point_is_lifted_to_z_zero():
+    _live()
+    from geomcore import Point2D
+    from geomcore.curves import Circle2D
+
+    parts = to_objects(Circle2D(Point2D(0, 0), 1.0).project_point(Point2D(3, 0)), "Q")
+    keys = by_key(parts)
+    assert keys["Q·closest"]["geom"]["p"] == pytest.approx([1.0, 0.0, 0.0])
+    assert keys["Q·query"]["geom"]["p"] == pytest.approx([3.0, 0.0, 0.0])
