@@ -48,6 +48,11 @@ def fake(name, geom, **getters):
     return type(name, (), attrs)()
 
 
+def world_z(vector_class):
+    """The +z unit vector: geomcore 0.36 renamed ``Vector3D.z()`` to ``unit_z()``."""
+    return vector_class.unit_z() if hasattr(vector_class, "unit_z") else vector_class.z()
+
+
 def assert_frame(got, want):
     for axis in ("o", "x", "y", "z"):
         assert got[axis] == pytest.approx(want[axis], abs=1e-12), axis
@@ -213,11 +218,16 @@ def test_real_geomcore_intersections():
     from geomcore.curves import Circle3D, Ellipse3D
 
     E = Ellipse3D.from_frame(Frame3D.world(), 3.0, 2.0)
-    C = Circle3D(P(2, 1, 0), V.z(), 1.5)
-    parts = to_objects(C.intersect_ellipse(E), "P")
-    assert [p["label"] for p in parts] == ["P₁", "P₂"]
-    far = Circle3D(P(9, 0, 0), V.z(), 1.0)
-    assert to_objects(C.intersect_circle(far), "Q")[0]["geom"]["text"] == "Q: ∅"
+    C = Circle3D(P(2, 1, 0), world_z(V), 1.5)
+    far = Circle3D(P(9, 0, 0), world_z(V), 1.0)
+    if hasattr(C, "intersect_ellipse"):  # geomcore <= 0.35: (tag, payload) results
+        parts = to_objects(C.intersect_ellipse(E), "P")
+        assert [p["label"] for p in parts] == ["P₁", "P₂"]
+        assert to_objects(C.intersect_circle(far), "Q")[0]["geom"]["text"] == "Q: ∅"
+    else:  # geomcore >= 0.36: result objects
+        keys = [p["key"] for p in to_objects(C.intersect(E), "P")]
+        assert [k for k in keys if "·hit" in k] == ["P·hit1", "P·hit2"]
+        assert by_key(to_objects(C.intersect(far), "Q"))["Q·note"]["geom"]["text"] == "Q: ∅"
 
 
 def test_hit_parameters_and_tag_go_to_meta():
@@ -281,10 +291,10 @@ def test_real_geomcore_parametrize_on_gives_a_uv_curve():
     from geomcore.curves import Circle3D
     from geomcore.surfaces import Cylinder, Plane
 
-    Y = Cylinder(P(0, 0, 0), V.z(), 2.0)
-    q = Circle3D(P(0, 0, 1.5), V.z(), 2.0).parametrize_on(Y)
+    Y = Cylinder(P(0, 0, 0), world_z(V), 2.0)
+    q = Circle3D(P(0, 0, 1.5), world_z(V), 2.0).parametrize_on(Y)
     assert uv_curve(q) == {"type": "line", "o": [0.0, 1.5, 0.0], "d": [1.0, 0.0, 0.0]}
-    flipped = Circle3D(P(1, 1, 0), V(0, 0, -1), 0.5).parametrize_on(Plane(P(0, 0, 0), V.z()))
+    flipped = Circle3D(P(1, 1, 0), V(0, 0, -1), 0.5).parametrize_on(Plane(P(0, 0, 0), world_z(V)))
     assert uv_curve(flipped)["frame"]["z"] == pytest.approx([0.0, 0.0, -1.0])
 
 
@@ -400,7 +410,262 @@ def test_real_geomcore_projections():
     assert len(on_line) == 4 and on_line[3]["geom"]["points"] == [[1.0, 2.0, 0.0], [1.0, 0.0, 0.0]]
     on_circle = to_objects(Circle2D(Point2D(0, 0), 1.0).project_point(Point2D(3, 0)), "B")
     assert len(on_circle) == 4
-    on_plane = to_objects(Plane(P(0, 0, 0), V.unit_z()).project_point(P(1, 2, 3)), "C")
+    on_plane = to_objects(Plane(P(0, 0, 0), world_z(V)).project_point(P(1, 2, 3)), "C")
     assert len(on_plane) == 4 and on_plane[0]["geom"]["window"]
-    on_cylinder = to_objects(Cylinder(P(0, 0, 0), V.unit_z(), 2.0).project_point(P(5, 0, 1)), "D")
+    on_cylinder = to_objects(Cylinder(P(0, 0, 0), world_z(V), 2.0).project_point(P(5, 0, 1)), "D")
     assert on_cylinder[0]["geom"]["window"]["u"] == [0.0, TAU]
+
+
+# --- intersection and extrema results (geomcore >= 0.36) --------------------
+class Named:
+    """Stand-in for a geomcore enum value: only ``.name`` is read."""
+
+    def __init__(self, name):
+        self.name = name
+
+
+class Completeness:
+    def __init__(self, status="COMPLETE", reason=None, regions=()):
+        self.status, self.reason, self.regions = Named(status), reason, list(regions)
+
+
+class Region:
+    def __init__(self, min_corner, max_corner):
+        self.min_corner, self.max_corner = min_corner, max_corner
+
+
+class CurveCurveHit:
+    def __init__(self, point, first_parameter, second_parameter, multiplicity=1):
+        self.point, self.multiplicity = point, multiplicity
+        self.first_parameter, self.second_parameter = first_parameter, second_parameter
+
+
+class CurveCurveOverlap:
+    def __init__(self, first_range, second_range):
+        self.first_range, self.second_range, self.same_direction = first_range, second_range, True
+
+
+class IntersectionCurve:
+    def __init__(self, curve, tangent=False):
+        self.curve, self.tangent = curve, tangent
+
+
+class _Intersection:
+    def __init__(self, first, second, *, method="EXACT", completeness=None, hits=(), overlaps=(), curves=(),
+                 contact_points=(), coincident=False):
+        self.first, self.second, self.method = first, second, Named(method)
+        self.completeness = completeness or Completeness()
+        self.hits, self.overlaps, self.curves = list(hits), list(overlaps), list(curves)
+        self.contact_points, self._coincident = list(contact_points), coincident
+
+    def is_coincident(self):
+        return self._coincident
+
+    def __bool__(self):
+        return bool(self.hits or self.overlaps or self.curves or self.contact_points or self._coincident)
+
+
+class CurveCurveIntersection(_Intersection):
+    pass
+
+
+class SurfaceSurfaceIntersection(_Intersection):
+    pass
+
+
+class CurveCurveExtremum:
+    def __init__(self, distance, first_parameter, second_parameter):
+        self.distance, self.first_parameter, self.second_parameter = distance, first_parameter, second_parameter
+
+
+class CurveCurveExtrema:
+    def __init__(self, first, second, minima):
+        self.first, self.second, self.minima = first, second, list(minima)
+
+
+Y_LINE = {"type": "line", "o": [0.0, 1.0, 1.0], "d": [0.0, 1.0, 0.0]}
+CIRCLE = {"type": "circle", "frame": _frame([0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 0.0, 1.0]), "r": 1.0}
+
+
+def x_line():
+    return fake("Line3D", X_LINE, origin=Point3D(0, 0, 0), direction=Vector3D(1, 0, 0))
+
+
+def unit_circle():
+    return fake("Circle3D", CIRCLE, center=Point3D(0, 0, 0), radius=1.0, normal=Vector3D(0, 0, 1))
+
+
+def by_key(parts):
+    return {p["key"]: p for p in parts}
+
+
+def test_intersection_draws_operands_hits_method_and_one_group():
+    result = CurveCurveIntersection(x_line(), unit_circle(), method="EXACT",
+                                    hits=[CurveCurveHit(Point3D(1, 0, 0), 0.0, 0.0), CurveCurveHit(Point3D(-1, 0, 0), 1.0, 3.0)])
+    parts = to_objects(result, "P")
+    keys = by_key(parts)
+    assert set(keys) == {"P·first", "P·second", "P·hit1", "P·hit2", "P·method"}
+    assert {p["group"] for p in parts if "group" in p} == {"P"}
+    assert all(p["group"] == "P" for p in parts if p["geom"]["type"] != "note")
+    assert keys["P·first"]["style"] == {"opacity": 0.45} and keys["P·second"]["style"] == {"opacity": 0.45}
+    assert keys["P·first"]["geom"]["type"] == "line" and keys["P·second"]["geom"]["type"] == "circle"
+    assert keys["P·hit1"]["geom"] == {"type": "point", "p": [1.0, 0.0, 0.0]}
+    assert keys["P·hit1"]["style"]["color"] == ACCENT and keys["P·hit1"]["label"] is None
+    assert keys["P·hit2"]["meta"] == {"tag": "hit", "params": [1.0, 3.0]}
+    assert keys["P·method"]["geom"] == {"type": "note", "text": "P: method: exact", "level": "info"}
+
+
+def test_default_group_names_both_operands_and_is_deterministic():
+    result = CurveCurveIntersection(x_line(), unit_circle(), hits=[CurveCurveHit(Point3D(1, 0, 0), 0.0, 0.0)])
+    assert {p["group"] for p in to_objects(result) if "group" in p} == {"Line3D × Circle3D"}
+    assert {p["key"] for p in to_objects(result)} == {p["key"] for p in to_objects(result)}
+
+
+def test_tangent_hit_and_tangent_curve_are_labelled():
+    result = SurfaceSurfaceIntersection(
+        fake("Plane", XY_PLANE), fake("Plane", XY_PLANE),
+        curves=[IntersectionCurve(unit_circle(), tangent=True), IntersectionCurve(x_line())],
+        contact_points=[Point3D(0, 0, 0)],
+    )
+    keys = by_key(to_objects(result, "S"))
+    assert keys["S·curve1"]["label"] == "tangent" and keys["S·curve2"]["label"] is None
+    assert keys["S·curve1"]["geom"]["type"] == "circle" and keys["S·curve1"]["style"]["color"] == ACCENT
+    assert keys["S·contact1"]["label"] == "tangent"
+    double = CurveCurveIntersection(x_line(), unit_circle(), hits=[CurveCurveHit(Point3D(1, 0, 0), 0.0, 0.0, 2)])
+    assert by_key(to_objects(double, "T"))["T·hit1"]["label"] == "tangent"
+
+
+def test_overlap_is_the_operand_sampled_over_its_range():
+    result = CurveCurveIntersection(x_line(), x_line(), overlaps=[CurveCurveOverlap((1.0, 3.0), (-5.0, 5.0))])
+    overlap = by_key(to_objects(result, "O"))["O·overlap1"]
+    assert overlap["geom"]["type"] == "polyline" and overlap["style"]["color"] == ACCENT
+    xs = [p[0] for p in overlap["geom"]["points"]]
+    assert xs[0] == pytest.approx(1.0) and xs[-1] == pytest.approx(3.0)
+
+
+def test_unbounded_overlap_falls_back_to_the_bounded_operand_then_the_whole_operand():
+    inf = float("inf")
+    second_bounded = CurveCurveIntersection(x_line(), x_line(), overlaps=[CurveCurveOverlap((-inf, inf), (2.0, 4.0))])
+    xs = [p[0] for p in by_key(to_objects(second_bounded, "A"))["A·overlap1"]["geom"]["points"]]
+    assert xs[0] == pytest.approx(2.0) and xs[-1] == pytest.approx(4.0)
+    both = CurveCurveIntersection(x_line(), x_line(), overlaps=[CurveCurveOverlap((-inf, inf), (-inf, inf))])
+    whole = by_key(to_objects(both, "B"))["B·overlap1"]
+    assert whole["geom"]["type"] == "line" and whole["style"]["color"] == ACCENT
+
+
+def test_incomplete_result_warns_and_draws_each_region_as_a_dashed_box():
+    regions = [Region(Point3D(0, 0, 0), Point3D(1, 2, 3)), Region(Point3D(5, 5, 5), Point3D(6, 6, 6))]
+    result = SurfaceSurfaceIntersection(fake("Plane", XY_PLANE), fake("Plane", XY_PLANE),
+                                        completeness=Completeness("INCOMPLETE", "iteration limit", regions))
+    parts = to_objects(result, "I")
+    keys = by_key(parts)
+    assert keys["I·status"]["geom"]["level"] == "warn" and "iteration limit" in keys["I·status"]["geom"]["text"]
+    for index, (low, high) in enumerate(((0, 1), (5, 6)), start=1):
+        box = keys[f"I·region{index}"]
+        assert box["style"]["dashed"] is True and box["style"]["color"] == ACCENT and box["group"] == "I"
+        points = box["geom"]["points"]
+        assert box["geom"]["type"] == "polyline"
+        assert {c for p in points for c in p} <= {float(low), float(high), 2.0, 3.0, 5.0, 6.0}
+        assert min(p[0] for p in points) == low and max(p[0] for p in points) == high
+
+
+def test_box_path_covers_all_twelve_segments():
+    result = SurfaceSurfaceIntersection(fake("Plane", XY_PLANE), fake("Plane", XY_PLANE),
+                                        completeness=Completeness("INCOMPLETE", None,
+                                                                  [Region(Point3D(0, 0, 0), Point3D(1, 1, 1))]))
+    points = by_key(to_objects(result, "I"))["I·region1"]["geom"]["points"]
+    covered = {frozenset((tuple(a), tuple(b))) for a, b in zip(points, points[1:])}
+    assert len(covered) == 12
+    assert all(sum(x != y for x, y in zip(a, b)) == 1 for a, b in map(tuple, covered))
+
+
+def test_sampled_result_gets_an_info_note():
+    result = CurveCurveIntersection(x_line(), unit_circle(), completeness=Completeness("SAMPLED"),
+                                    hits=[CurveCurveHit(Point3D(1, 0, 0), 0.0, 0.0)])
+    note = by_key(to_objects(result, "M"))["M·status"]["geom"]
+    assert note["level"] == "info" and "sampled" in note["text"]
+
+
+def test_complete_result_has_no_status_note():
+    result = CurveCurveIntersection(x_line(), unit_circle(), hits=[CurveCurveHit(Point3D(1, 0, 0), 0.0, 0.0)])
+    assert "M·status" not in by_key(to_objects(result, "M"))
+
+
+def test_empty_intersection_keeps_operands_and_says_empty():
+    keys = by_key(to_objects(CurveCurveIntersection(x_line(), unit_circle()), "E"))
+    assert keys["E·note"]["geom"]["text"] == "E: ∅"
+    assert {"E·first", "E·second", "E·method"} <= set(keys)
+
+
+def test_coincident_surfaces_get_a_note():
+    result = SurfaceSurfaceIntersection(fake("Plane", XY_PLANE), fake("Plane", XY_PLANE), coincident=True)
+    assert "coincident" in by_key(to_objects(result, "C"))["C·coincident"]["geom"]["text"]
+
+
+def test_user_style_wins_over_recipe_defaults():
+    from geomcore_viewer.viewer import Viewer
+
+    viewer = Viewer.__new__(Viewer)
+    viewer._next_color, viewer._next_auto, viewer.run, viewer.objects = 0, 0, "abcdef", {}
+    result = CurveCurveIntersection(x_line(), unit_circle(), hits=[CurveCurveHit(Point3D(1, 0, 0), 0.0, 0.0)])
+    built = [viewer._build(p, {"opacity": 0.2, "color": "#000000"}, None, {}, None, None)
+             for p in to_objects(result, "U") if p["geom"]["type"] != "note"]
+    assert all(o["style"]["opacity"] == 0.2 and o["style"]["color"] == "#000000" for o in built)
+
+
+def test_extrema_draw_a_dashed_segment_per_minimum_labelled_with_its_distance():
+    first, second = x_line(), fake("Line3D", Y_LINE, origin=Point3D(0, 1, 1), direction=Vector3D(0, 1, 0))
+    parts = to_objects(CurveCurveExtrema(first, second, [CurveCurveExtremum(1.0, 0.0, -1.0)]), "X")
+    keys = by_key(parts)
+    assert {p["group"] for p in parts} == {"X"}
+    segment = keys["X·minimum1"]
+    assert segment["geom"] == {"type": "polyline", "points": [[0.0, 0.0, 0.0], [0.0, 0.0, 1.0]]}
+    assert segment["style"] == {"color": ACCENT, "dashed": True}
+    assert segment["label"] == "d = 1"
+    assert segment["meta"] == {"tag": "extremum", "params": [0.0, -1.0]}
+    assert keys["X·first"]["style"] == {"opacity": 0.45}
+
+
+def test_extrema_without_minima_say_empty_and_default_group_is_named():
+    parts = to_objects(CurveCurveExtrema(x_line(), unit_circle(), []))
+    assert {p["group"] for p in parts if "group" in p} == {"Line3D × Circle3D extrema"}
+    assert any(p["geom"].get("text", "").endswith("∅") for p in parts)
+
+
+def test_trimmed_operand_is_sampled_over_its_bounds():
+    trimmed = type("TrimmedCurve3D", (), {
+        "bounds": lambda self: (1.0, 2.0),
+        "eval_point": lambda self, t: Point3D(t, 0.0, 0.0),
+    })()
+    result = CurveCurveIntersection(trimmed, unit_circle(), hits=[CurveCurveHit(Point3D(1, 0, 0), 1.0, 0.0)])
+    geom = by_key(to_objects(result, "T"))["T·first"]["geom"]
+    assert geom["type"] == "polyline" and geom["points"][0][0] == 1.0 and geom["points"][-1][0] == 2.0
+
+
+def test_real_geomcore_intersections_and_extrema_display():
+    pytest.importorskip("geomcore")
+    import geomcore
+    from geomcore import Point2D, Point3D as P, Vector2D, Vector3D as V
+    from geomcore.curves import Circle2D, Circle3D, Line2D, Line3D
+    from geomcore.surfaces import Plane, Sphere
+
+    if not hasattr(geomcore, "CurveCurveIntersection"):
+        pytest.skip("needs geomcore >= 0.36")
+    unit_z = world_z(V)
+    line = Line3D(P(0, 0, 0), V(1, 0, 0))
+    tangent_line = Line3D(P(1, -1, 0), V(0, 1, 0))
+    tangent = to_objects(Circle3D(P(0, 0, 0), unit_z, 1.0).intersect(tangent_line), "A")
+    assert by_key(tangent)["A·hit1"]["label"] == "tangent"
+    overlap = to_objects(line.intersect(Line3D(P(2, 0, 0), V(1, 0, 0))), "B")
+    assert by_key(overlap)["B·overlap1"]["geom"]["type"] == "line"
+    plane_sphere = to_objects(Plane(P(0, 0, 0), unit_z).intersect(Sphere(P(0, 0, 0), 1.0)), "C")
+    assert by_key(plane_sphere)["C·curve1"]["geom"]["type"] == "circle"
+    assert by_key(plane_sphere)["C·method"]["geom"]["text"] == "C: method: exact"
+    pierced = to_objects(Line3D(P(0, 0, 0), V(0, 0, 1)).intersect(Sphere(P(0, 0, 0), 1.0)), "D")
+    assert {"D·hit1", "D·hit2"} <= set(by_key(pierced))
+    flat = to_objects(Circle2D(Point2D(0, 0), 1.0).intersect(Line2D(Point2D(1, 0), Vector2D(0, 1))), "E")
+    assert by_key(flat)["E·hit1"]["geom"]["p"] == [1.0, 0.0, 0.0]
+    empty = to_objects(Plane(P(0, 0, 0), unit_z).intersect(Plane(P(0, 0, 1), unit_z)), "F")
+    assert by_key(empty)["F·note"]["geom"]["text"] == "F: ∅"
+    extrema = to_objects(geomcore.curve_curve_extrema(line, Line3D(P(0, 1, 1), V(0, 1, 0))), "G")
+    assert by_key(extrema)["G·minimum1"]["label"] == "d = 1"

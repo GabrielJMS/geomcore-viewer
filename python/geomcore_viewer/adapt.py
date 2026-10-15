@@ -353,10 +353,10 @@ def _labelled(items: list, label: str | None, u, v, tag: str | None = None) -> l
     return parts
 
 
-def _note(text: str, label: str | None, level: str = "info") -> dict:
+def _note(text: str, label: str | None, level: str = "info", kind: str = "note") -> dict:
     return {
         "label": None,
-        "key": f"{label}·note" if label else None,
+        "key": f"{label}·{kind}" if label else None,
         "geom": {"type": "note", "text": f"{label}: {text}" if label else text, "level": level},
     }
 
@@ -436,7 +436,140 @@ def _projection(result, label: str | None, u=None, v=None) -> list[dict]:
     ]
 
 
-_RESULT_OBJECTS = {name: _projection for name in PROJECTIONS}
+# --- intersection and extrema results (geomcore >= 0.36) ----------------------
+INTERSECTIONS = frozenset({
+    "CurveCurveIntersection", "CurveCurveIntersection2D", "CurveSurfaceIntersection", "SurfaceSurfaceIntersection",
+})
+TRIMMED_CURVES = frozenset({"TrimmedCurve3D", "TrimmedCurve2D"})
+OPERAND_OPACITY = 0.45
+_RANGE_SEGMENTS = 64
+# Twelve box segments as one polyline over the corner indices (bit 0 is x, bit 1 is y, bit 2 is z);
+# two segments are walked twice.
+_BOX_PATH = (0, 1, 3, 2, 0, 4, 5, 1, 3, 7, 6, 2, 6, 4, 6, 7, 5)
+
+
+def _operand(obj, key: str, label: str, u, v) -> dict:
+    """An intersected shape, translucent so the result stays visible inside it."""
+    name = type(obj).__name__
+    if name in TRIMMED_CURVES:
+        part = _sampled_range(obj, *obj.bounds())
+    else:
+        [part] = _single(obj, None, u, v)
+    return {**part, "key": key, "group": label, "style": {"opacity": OPERAND_OPACITY}}
+
+
+def _sampled_range(curve, first: float, last: float) -> dict:
+    points = [as_vec(curve.eval_point(first + (last - first) * i / _RANGE_SEGMENTS))
+              for i in range(_RANGE_SEGMENTS + 1)]
+    return {"label": None, "geom": {"type": "polyline", "points": points}}
+
+
+def _overlap_part(result, overlap, key: str, label: str) -> dict:
+    """The operand over the overlap's parameter range (the first operand's when it is bounded, else the
+    second's); a range unbounded on both operands draws the whole first operand."""
+    for operand, bounds in ((result.first, overlap.first_range), (result.second, overlap.second_range)):
+        if all(math.isfinite(b) for b in bounds):
+            part = _sampled_range(operand, *bounds)
+            break
+    else:
+        [part] = _single(result.first, None, None, None)
+    return {**part, "key": key, "group": label, "style": {"color": ACCENT}}
+
+
+def _box_part(region, key: str, label: str) -> dict | None:
+    low, high = as_vec(region.min_corner), as_vec(region.max_corner)
+    if not all(math.isfinite(c) for c in (*low, *high)):
+        return None
+    corners = [[(high if index >> axis & 1 else low)[axis] for axis in range(3)] for index in range(8)]
+    return {"label": None, "key": key, "group": label, "style": {"color": ACCENT, "dashed": True},
+            "geom": {"type": "polyline", "points": [corners[i] for i in _BOX_PATH]}}
+
+
+def _param(value):
+    return None if value is None else _numeric(value)
+
+
+def _hit_params(hit) -> list:
+    if hasattr(hit, "curve_parameter"):
+        return [_param(hit.curve_parameter), _param(hit.surface_parameters)]
+    return [_param(hit.first_parameter), _param(hit.second_parameter)]
+
+
+def _result_point(point, key: str, label: str, text: str | None, meta: dict | None = None) -> dict:
+    part = {"label": text, "key": key, "group": label, "style": {"color": ACCENT},
+            "geom": {"type": "point", "p": as_vec(point)}}
+    if meta:
+        part["meta"] = meta
+    return part
+
+
+def _completeness_parts(result, label: str) -> list[dict]:
+    completeness = result.completeness
+    status = completeness.status.name
+    if status == "INCOMPLETE":
+        reason = f": {completeness.reason}" if completeness.reason else ""
+        parts = [_note(f"incomplete, some intersections may be missing{reason}", label, "warn", "status")]
+        boxes = (_box_part(region, f"{label}·region{i}", label) for i, region in enumerate(completeness.regions, 1))
+        return parts + [box for box in boxes if box is not None]
+    if status == "SAMPLED":
+        return [_note("sampled, so a very small intersection could be missed", label, "info", "status")]
+    return []
+
+
+def _intersection(result, label: str | None, u=None, v=None) -> list[dict]:
+    """Both operands translucent, the result in the accent colour, and notes on the method and completeness.
+
+    One group per result, named after the operands unless ``label`` is given. Recipe styles are
+    defaults: ``color=``, ``opacity=`` or ``dashed=`` given to ``add`` override them.
+    """
+    first_name, second_name = type(result.first).__name__, type(result.second).__name__
+    label = label or f"{first_name} × {second_name}"
+    parts = [_operand(result.first, f"{label}·first", label, u, v),
+             _operand(result.second, f"{label}·second", label, u, v)]
+    for i, piece in enumerate(getattr(result, "curves", ()), start=1):
+        [curve] = _single(piece.curve, None, None, None)
+        parts.append({**curve, "key": f"{label}·curve{i}", "group": label, "style": {"color": ACCENT},
+                      "label": "tangent" if piece.tangent else None})
+    for i, hit in enumerate(getattr(result, "hits", ()), start=1):
+        text = "tangent" if hit.multiplicity >= 2 else None
+        parts.append(_result_point(hit.point, f"{label}·hit{i}", label, text,
+                                   {"tag": "hit", "params": _hit_params(hit)}))
+    for i, point in enumerate(getattr(result, "contact_points", ()), start=1):
+        parts.append(_result_point(point, f"{label}·contact{i}", label, "tangent"))
+    for i, overlap in enumerate(getattr(result, "overlaps", ()), start=1):
+        parts.append(_overlap_part(result, overlap, f"{label}·overlap{i}", label))
+    if not result:
+        parts.append(_note(EMPTY_NOTES["empty"], label))
+    if hasattr(result, "is_coincident") and result.is_coincident():
+        parts.append(_note(INFO_NOTES["coincident"], label, "info", "coincident"))
+    parts.append(_note(f"method: {result.method.name.lower()}", label, "info", "method"))
+    return parts + _completeness_parts(result, label)
+
+
+def _extrema(result, label: str | None, u=None, v=None) -> list[dict]:
+    """Both curves translucent and a dashed segment joining the two points of each minimum."""
+    first_name, second_name = type(result.first).__name__, type(result.second).__name__
+    label = label or f"{first_name} × {second_name} extrema"
+    parts = [_operand(result.first, f"{label}·first", label, u, v),
+             _operand(result.second, f"{label}·second", label, u, v)]
+    for i, minimum in enumerate(result.minima, start=1):
+        ends = [as_vec(result.first.eval_point(minimum.first_parameter)),
+                as_vec(result.second.eval_point(minimum.second_parameter))]
+        parts.append({"label": f"d = {float(minimum.distance):.6g}", "key": f"{label}·minimum{i}", "group": label,
+                      "style": {"color": ACCENT, "dashed": True},
+                      "meta": {"tag": "extremum", "params": [_param(minimum.first_parameter),
+                                                             _param(minimum.second_parameter)]},
+                      "geom": {"type": "polyline", "points": ends}})
+    if not result.minima:
+        parts.append(_note(EMPTY_NOTES["empty"], label))
+    return parts
+
+
+_RESULT_OBJECTS = {
+    **{name: _projection for name in PROJECTIONS},
+    **{name: _intersection for name in INTERSECTIONS},
+    "CurveCurveExtrema": _extrema,
+}
 
 
 def _result_object(obj, label: str | None, u=None, v=None) -> list[dict] | None:
