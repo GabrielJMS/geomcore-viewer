@@ -17,11 +17,15 @@ from collections.abc import Iterable
 from .sampling import sample_curve, sample_surface_grid
 
 TAU = 2.0 * math.pi
+PALETTE = ("#d1495b", "#00798c", "#c47f00", "#3a7cc2", "#8a5cc2", "#5c8a00", "#b5448f", "#6b7a8f")
+ACCENT = PALETTE[0]
 CHECK_TOL = 1e-9
 _CHECK_T = 0.7
 _CHECK_UV = (0.7, 0.3)
 _BSPLINE_SEGMENTS = 256
 _BSPLINE_GRID = 48
+_WINDOW_MIN_HALF_SIZE = 1.0
+_WINDOW_DISTANCE_FACTOR = 1.5
 
 CURVES = frozenset({"Line3D", "Line2D", "Circle3D", "Circle2D", "Ellipse3D", "Parabola3D", "Hyperbola3D"})
 SURFACES = frozenset({"Plane", "Cylinder", "Cone", "Sphere", "Torus"})
@@ -377,9 +381,70 @@ def _result(tag: str, payload, label: str | None, u, v) -> list[dict]:
     return parts
 
 
+# --- projection results (geomcore >= 0.36) ------------------------------------
+CURVE_PROJECTIONS = frozenset({"CurveProjection", "CurveProjection2D"})
+PROJECTIONS = CURVE_PROJECTIONS | {"SurfaceProjection"}
+_projection_count = 0
+
+
+def _surface_window_bounds(name: str, result) -> tuple[tuple | None, tuple | None, float]:
+    """Parameter bounds around the closest point for the directions that need them, and the
+    half-size used for them. Sampled surfaces need both directions; analytic ones only the
+    infinite ones (``with_window`` fills the periodic ones with a full period)."""
+    half = max(_WINDOW_MIN_HALF_SIZE, _WINDOW_DISTANCE_FACTOR * float(result.distance))
+    bounds_u = (result.u - half, result.u + half)
+    bounds_v = (result.v - half, result.v + half)
+    if name == "BSplineSurface":
+        return bounds_u, bounds_v, half
+    infinite = _INFINITE.get(name.lower(), ())
+    return (bounds_u if "u" in infinite else None), (bounds_v if "v" in infinite else None), half
+
+
+def _projection(result, label: str | None) -> list[dict]:
+    """The target, the query point, the closest point and a dashed segment between them, in one group."""
+    global _projection_count
+    if label is None:
+        _projection_count += 1
+        label = f"projection {_projection_count}"
+    if type(result).__name__ == "SurfaceProjection":
+        name = type(result.target).__name__
+        bounds_u, bounds_v, half = _surface_window_bounds(name, result)
+        [target] = _single(result.target, None, bounds_u, bounds_v)
+        if name in _INFINITE or name.lower() in _INFINITE:
+            target["geom"] = with_window(target["geom"], half, bounds_u, bounds_v)
+        params = [result.u, result.v]
+    else:
+        [target] = _single(result.target, None, None, None)
+        params = [result.parameter]
+    query, closest = as_vec(result.query_point), as_vec(result.point)
+    closest_meta = {"tag": "projection", "params": _numeric(params)}
+    accent = {"color": ACCENT}
+    return [
+        {**target, "key": f"{label}·target", "group": label},
+        {"label": "query point", "key": f"{label}·query", "group": label, "style": accent,
+         "geom": {"type": "point", "p": query}},
+        {"label": f"closest point, d = {float(result.distance):.6g}", "key": f"{label}·closest", "group": label,
+         "style": accent, "meta": closest_meta, "geom": {"type": "point", "p": closest}},
+        {"label": None, "key": f"{label}·distance", "group": label, "style": {**accent, "dashed": True},
+         "geom": {"type": "polyline", "points": [query, closest]}},
+    ]
+
+
+_RESULT_OBJECTS = {name: _projection for name in PROJECTIONS}
+
+
+def _result_object(obj, label: str | None) -> list[dict] | None:
+    """Parts for a geomcore result object, dispatched on its class name; None for anything else."""
+    recipe = _RESULT_OBJECTS.get(type(obj).__name__)
+    return None if recipe is None else recipe(obj, label)
+
+
 def to_objects(obj, label: str | None = None, *, u=None, v=None) -> list[dict]:
-    """Protocol parts for one ``add`` argument: a geomcore object, a ``(tag, payload)``
-    intersection result, or a list/tuple of those."""
+    """Protocol parts for one ``add`` argument: a geomcore object, a result object such as a
+    projection, a ``(tag, payload)`` intersection result, or a list/tuple of those."""
+    parts = _result_object(obj, label)
+    if parts is not None:
+        return parts
     if _is_result(obj):
         return _result(obj[0], obj[1], label, u, v)
     if type(obj).__name__ in GEOMETRY:

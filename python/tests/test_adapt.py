@@ -3,6 +3,8 @@ import math
 import pytest
 
 from geomcore_viewer.adapt import (
+    PALETTE,
+    TAU,
     _frame,
     as_vec,
     eval_curve,
@@ -283,3 +285,92 @@ def test_real_geomcore_parametrize_on_gives_a_uv_curve():
     assert uv_curve(q) == {"type": "line", "o": [0.0, 1.5, 0.0], "d": [1.0, 0.0, 0.0]}
     flipped = Circle3D(P(1, 1, 0), V(0, 0, -1), 0.5).parametrize_on(Plane(P(0, 0, 0), V.z()))
     assert uv_curve(flipped)["frame"]["z"] == pytest.approx([0.0, 0.0, -1.0])
+
+
+# --- projection results (geomcore >= 0.36) ---------------------------------
+class CurveProjection:
+    def __init__(self, target, query_point, point, distance, parameter):
+        self.target, self.query_point, self.point = target, query_point, point
+        self.distance, self.parameter = distance, parameter
+
+
+class CurveProjection2D(CurveProjection):
+    pass
+
+
+class SurfaceProjection:
+    def __init__(self, target, query_point, point, distance, u, v):
+        self.target, self.query_point, self.point = target, query_point, point
+        self.distance, self.u, self.v = distance, u, v
+
+
+X_LINE = {"type": "line", "o": [0.0, 0.0, 0.0], "d": [1.0, 0.0, 0.0]}
+XY_PLANE = {"type": "plane", "frame": _frame([0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 0.0, 1.0])}
+
+
+def test_curve_projection_draws_target_points_and_dashed_connector():
+    line = fake("Line3D", X_LINE, origin=Point3D(0, 0, 0), direction=Vector3D(1, 0, 0))
+    result = CurveProjection(line, Point3D(1, 2, 0), Point3D(1, 0, 0), 2.0, 1.0)
+    parts = to_objects(result, "P")
+    assert len(parts) == 4
+    by_key = {p["key"]: p for p in parts}
+    assert set(by_key) == {"P·target", "P·query", "P·closest", "P·distance"}
+    assert all(p["group"] == "P" for p in parts)
+    assert by_key["P·target"]["geom"]["type"] == "line"
+    assert by_key["P·query"]["geom"] == {"type": "point", "p": [1.0, 2.0, 0.0]}
+    assert by_key["P·closest"]["geom"] == {"type": "point", "p": [1.0, 0.0, 0.0]}
+    assert by_key["P·query"]["label"] == "query point"
+    assert by_key["P·closest"]["label"] == "closest point, d = 2"
+    assert by_key["P·closest"]["style"]["color"] == PALETTE[0]
+    connector = by_key["P·distance"]
+    assert connector["geom"] == {"type": "polyline", "points": [[1.0, 2.0, 0.0], [1.0, 0.0, 0.0]]}
+    assert connector["style"]["dashed"] is True
+    assert by_key["P·closest"]["meta"] == {"tag": "projection", "params": [1.0]}
+
+
+def test_curve_projection_2d_lifts_points_to_z_zero():
+    circle = fake("Circle2D", {"type": "circle", "frame": _frame([0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 0.0, 1.0]),
+                               "r": 1.0}, center=Point3D(0.0, 0.0), radius=1.0)
+    parts = to_objects(CurveProjection2D(circle, Point3D(3, 0), Point3D(1, 0), 2.0, 0.0), "Q")
+    assert len(parts) == 4
+    assert parts[1]["geom"]["p"] == [3.0, 0.0, 0.0]
+
+
+def test_surface_projection_windows_the_surface_around_the_closest_point():
+    plane = fake("Plane", XY_PLANE)
+    result = SurfaceProjection(plane, Point3D(10, 20, 3), Point3D(10, 20, 0), 3.0, 10.0, 20.0)
+    parts = {p["key"]: p for p in to_objects(result, "S")}
+    window = parts["S·target"]["geom"]["window"]
+    for name, centre in (("u", 10.0), ("v", 20.0)):
+        low, high = window[name]
+        assert low < centre < high and (low + high) / 2 == pytest.approx(centre)
+    assert parts["S·closest"]["meta"]["params"] == [10.0, 20.0]
+    assert parts["S·closest"]["label"] == "closest point, d = 3"
+    assert parts["S·distance"]["style"]["dashed"] is True
+
+
+def test_projection_without_a_label_still_groups_and_names_its_parts():
+    line = fake("Line3D", X_LINE, origin=Point3D(0, 0, 0), direction=Vector3D(1, 0, 0))
+    parts = to_objects(CurveProjection(line, Point3D(1, 2, 0), Point3D(1, 0, 0), 2.0, 1.0))
+    assert len({p["key"] for p in parts}) == 4
+    assert len({p["group"] for p in parts}) == 1
+
+
+def test_tuple_results_still_work_next_to_projections():
+    assert [p["label"] for p in to_objects(("points", [Point3D(0, 0, 0), Point3D(1, 0, 0)]), "R")] == ["R₁", "R₂"]
+
+
+def test_real_geomcore_projections():
+    pytest.importorskip("geomcore")
+    from geomcore import Point2D, Point3D as P, Vector3D as V
+    from geomcore.curves import Circle2D, Line3D
+    from geomcore.surfaces import Cylinder, Plane
+
+    on_line = to_objects(Line3D(P(0, 0, 0), V(1, 0, 0)).project_point(P(1, 2, 0)), "A")
+    assert len(on_line) == 4 and on_line[3]["geom"]["points"] == [[1.0, 2.0, 0.0], [1.0, 0.0, 0.0]]
+    on_circle = to_objects(Circle2D(Point2D(0, 0), 1.0).project_point(Point2D(3, 0)), "B")
+    assert len(on_circle) == 4
+    on_plane = to_objects(Plane(P(0, 0, 0), V.unit_z()).project_point(P(1, 2, 3)), "C")
+    assert len(on_plane) == 4 and on_plane[0]["geom"]["window"]
+    on_cylinder = to_objects(Cylinder(P(0, 0, 0), V.unit_z(), 2.0).project_point(P(5, 0, 1)), "D")
+    assert on_cylinder[0]["geom"]["window"]["u"] == [0.0, TAU]
